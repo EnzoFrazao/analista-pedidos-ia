@@ -208,3 +208,25 @@ def test_definicoes_trazem_as_metricas_da_especificacao():
         "cancelamento",
     ):
         assert trecho in DEFINICOES
+
+
+def test_definicoes_documentam_balcao_cancelados_nota_e_semana():
+    for trecho in (
+        "balcao",
+        "retirada",
+        "cancelados mantêm valor e taxa_entrega",
+        "pedidos avaliados",
+        "nota IS NOT NULL",
+        "segunda a domingo",
+        "13 semanas completas",
+        "2026-06-29",
+        "2026-09-27",
+    ):
+        assert trecho in DEFINICOES, trecho
+
+
+def test_gerar_banco_nao_deixa_arquivos_temporarios(tmp_path: Path):
+    caminho = tmp_path / "pedidos.db"
+    gerar_banco(caminho)
+    gerar_banco(caminho)  # regenerar por cima também é atômico
+    assert [p.name for p in tmp_path.iterdir()] == ["pedidos.db"]

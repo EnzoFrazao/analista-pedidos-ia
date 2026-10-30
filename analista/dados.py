@@ -6,8 +6,10 @@ em dois bairros e cancelamento alto no marketplace) são as constantes nomeadas 
 """
 
 import hashlib
+import os
 import random
 import sqlite3
+import tempfile
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
@@ -51,6 +53,10 @@ Definições de métrica (valem para todas as consultas):
 Colunas: valor é a soma de quantidade * preco_unit dos itens do pedido, sem a taxa; \
 taxa_entrega é cobrada à parte; tempo_entrega_min e nota são nulos nos pedidos cancelados.
 status: 'entregue' (tempo_entrega_min até 45), 'atrasado' (acima de 45) ou 'cancelado'.
+Pedidos cancelados mantêm valor e taxa_entrega registrados, mas não entram em faturamento, ticket médio nem em soma de taxas; toda métrica de dinheiro usa só pedidos válidos.
+Canal balcao (retirada no local): taxa_entrega é 0, bairro é o do cliente e tempo_entrega_min é o tempo até a retirada; balcao entra nas métricas de tempo e de atraso como os demais canais.
+nota é opcional: fica nula em parte dos pedidos válidos; pedidos avaliados são os com nota IS NOT NULL.
+Semana vai de segunda a domingo; os dados cobrem 13 semanas completas, de 2026-06-29 a 2026-09-27.
 """
 
 # (nome, categoria, preço em centavos, popularidade relativa)
@@ -164,11 +170,10 @@ def _tempo_entrega(rng: random.Random, dia: date, hora: int, bairro: str) -> int
 
 
 def gerar_banco(caminho: Path, semente: int = 2026) -> None:
-    """Cria o SQLite em `caminho` (substitui o arquivo, se existir)."""
+    """Cria o SQLite em `caminho`, de forma atômica (substitui o arquivo, se existir)."""
     rng = random.Random(semente)
     caminho = Path(caminho)
     caminho.parent.mkdir(parents=True, exist_ok=True)
-    caminho.unlink(missing_ok=True)
 
     cardapio = [
         (i, nome, categoria, centavos / 100)
@@ -231,15 +236,26 @@ def gerar_banco(caminho: Path, semente: int = 2026) -> None:
             )
         )
 
-    conn = sqlite3.connect(caminho)
+    # Escreve num temporário na mesma pasta e troca de uma vez: sem janela sem arquivo.
+    descritor, nome_temp = tempfile.mkstemp(
+        dir=caminho.parent, prefix=f".{caminho.name}.", suffix=".tmp"
+    )
+    os.close(descritor)
+    temporario = Path(nome_temp)
     try:
-        conn.executescript(_ESQUEMA)
-        conn.executemany("INSERT INTO itens_cardapio VALUES (?, ?, ?, ?)", cardapio)
-        conn.executemany("INSERT INTO pedidos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", pedidos)
-        conn.executemany("INSERT INTO itens_pedido VALUES (?, ?, ?, ?)", itens_pedido)
-        conn.commit()
-    finally:
-        conn.close()
+        conn = sqlite3.connect(temporario)
+        try:
+            conn.executescript(_ESQUEMA)
+            conn.executemany("INSERT INTO itens_cardapio VALUES (?, ?, ?, ?)", cardapio)
+            conn.executemany("INSERT INTO pedidos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", pedidos)
+            conn.executemany("INSERT INTO itens_pedido VALUES (?, ?, ?, ?)", itens_pedido)
+            conn.commit()
+        finally:
+            conn.close()
+        os.replace(temporario, caminho)
+    except BaseException:
+        temporario.unlink(missing_ok=True)
+        raise
 
 
 def garantir_banco(caminho: Path) -> Path:
