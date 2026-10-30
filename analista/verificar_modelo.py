@@ -1,12 +1,14 @@
 """Teste de fumaça com chave real: `python -m analista.verificar_modelo`.
 
-Faz UMA chamada pequena, com uma ferramenta de teste, e diz se a chave, o modelo e o tool
-calling funcionam. Nunca imprime a chave. Sai com 0 (tudo OK), 1 (algo falhou) ou 2 (sem chave).
+Faz duas chamadas pequenas (pedido da ferramenta de teste e volta com o resultado dela) e diz
+se a chave, o modelo e o tool calling funcionam. Nunca imprime a chave. Sai com 0 (tudo OK),
+1 (algo falhou) ou 2 (sem chave).
 """
 
 import sys
 from collections.abc import Callable
 
+from analista.agente import mensagem_da_ferramenta, mensagem_do_assistente
 from analista.config import Configuracao, carregar_configuracao
 from analista.llm import ErroDoProvedor, ModeloLLM, criar_modelo
 
@@ -52,26 +54,55 @@ def verificar(
     try:
         resposta = modelo.completar(mensagens, [_FERRAMENTA_DE_TESTE])
     except ErroDoProvedor as erro:
-        # 429 e modelo inexistente só aparecem depois de a chave ser aceita.
-        chave_ok = erro.tipo in ("limite", "modelo")
-        saida("chave: OK" if chave_ok else f"chave: erro - {erro}")
-        if erro.tipo == "modelo":
-            saida(f"modelo: erro - {erro}")
-        else:
-            saida("modelo: não verificado")
-            if chave_ok or erro.tipo in ("conexao", "outro"):
-                saida(f"detalhe: {erro}")
-        saida("tool calling: não verificado")
+        _relatar_falha_do_primeiro_turno(erro, saida)
         return 1
 
+    # O primeiro turno só provou que a chave e o modelo respondem.
     saida("chave: OK")
     saida("modelo: OK")
-    if resposta.chamadas and resposta.chamadas[0].nome == "responder_ok":
-        saida("tool calling: OK")
-        return 0
-    saida("tool calling: erro - o modelo respondeu em texto em vez de chamar a ferramenta")
-    saida("Este modelo não serve para o agente; escolha outro em LLM_MODEL.")
-    return 1
+    if not resposta.chamadas or resposta.chamadas[0].nome != "responder_ok":
+        saida("tool calling: erro - o modelo respondeu em texto em vez de chamar a ferramenta")
+        saida("Este modelo não serve para o agente; escolha outro em LLM_MODEL.")
+        return 1
+
+    # Segundo turno: devolve o resultado da ferramenta pelo mesmo caminho que o Agente usa e
+    # exige texto. É aqui que o provedor reclama de histórico mal formado (id, assinatura...).
+    mensagens += [
+        mensagem_do_assistente(resposta),
+        mensagem_da_ferramenta(resposta.chamadas[0].id, '{"ok": true}'),
+    ]
+    try:
+        final = modelo.completar(mensagens, [_FERRAMENTA_DE_TESTE])
+    except ErroDoProvedor as erro:
+        saida(f"tool calling: erro - a volta com o resultado da ferramenta falhou: {erro}")
+        return 1
+    if final.chamadas or not (final.conteudo or "").strip():
+        saida(
+            "tool calling: erro - depois do resultado da ferramenta o modelo não respondeu em texto"
+        )
+        return 1
+    saida("tool calling: OK (pedido e volta com o resultado)")
+    return 0
+
+
+def _relatar_falha_do_primeiro_turno(erro: ErroDoProvedor, saida: Callable[[str], None]) -> None:
+    """Diz só o que a falha prova. 429 e modelo inexistente chegam depois de a chave ser aceita;
+    rede ou erro genérico não provam nada sobre a chave."""
+    if erro.tipo == "chave":
+        saida(f"chave: erro - {erro}")
+        saida("modelo: não verificado")
+    elif erro.tipo == "modelo":
+        saida("chave: OK")
+        saida(f"modelo: erro - {erro}")
+    elif erro.tipo == "limite":
+        saida("chave: OK")
+        saida("modelo: não verificado")
+        saida(f"detalhe: {erro}")
+    else:  # conexao, outro
+        saida("chave: não verificado")
+        saida("modelo: não verificado")
+        saida(f"detalhe: {erro}")
+    saida("tool calling: não verificado")
 
 
 def main() -> int:

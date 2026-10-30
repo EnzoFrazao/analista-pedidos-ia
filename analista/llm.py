@@ -20,15 +20,23 @@ _TIMEOUT_S = 60.0
 
 @dataclass(frozen=True)
 class ChamadaFerramenta:
+    """Uma chamada de ferramenta pedida pelo modelo.
+
+    `extra` guarda campos próprios do provedor que vieram na chamada (o Gemini 3 manda
+    `extra_content` com a `thought_signature`) e que precisam voltar intactos no histórico.
+    """
+
     id: str
     nome: str
     argumentos: str
+    extra: dict | None = None
 
 
 @dataclass(frozen=True)
 class MensagemModelo:
     conteudo: str | None
     chamadas: tuple[ChamadaFerramenta, ...]
+    motivo_fim: str | None = None  # finish_reason do provedor, para o rastro
 
 
 class ModeloLLM(Protocol):
@@ -44,6 +52,14 @@ class ErroDoProvedor(Exception):
     def __init__(self, mensagem: str, tipo: str = "outro"):
         super().__init__(mensagem)
         self.tipo = tipo
+
+
+_SINAIS_DE_CHAVE_INVALIDA = ("api key not valid", "api_key_invalid", "invalid api key")
+
+
+def _chave_invalida(erro: openai.APIError) -> bool:
+    texto = f"{erro} {getattr(erro, 'body', '')}".lower()
+    return any(sinal in texto for sinal in _SINAIS_DE_CHAVE_INVALIDA)
 
 
 def _erro_amigavel(erro: openai.APIError) -> ErroDoProvedor:
@@ -68,6 +84,11 @@ def _erro_amigavel(erro: openai.APIError) -> ErroDoProvedor:
         return ErroDoProvedor(
             "Não consegui conexão com o serviço do modelo. Confira a rede e LLM_BASE_URL.",
             "conexao",
+        )
+    if isinstance(erro, openai.BadRequestError) and _chave_invalida(erro):
+        # O Gemini responde 400 (não 401) a uma chave inválida.
+        return ErroDoProvedor(
+            "O serviço do modelo recusou a chave de acesso. Confira LLM_API_KEY.", "chave"
         )
     status = getattr(erro, "status_code", None)
     detalhe = f" (código {status})" if status else ""
@@ -117,17 +138,31 @@ class ClienteOpenAI:
                 time.sleep(self._esperas_s[tentativa])
             except openai.APIError as erro:
                 raise _erro_amigavel(erro) from None
-        mensagem = resposta.choices[0].message
+        if not getattr(resposta, "choices", None):
+            raise ErroDoProvedor("O modelo não devolveu resposta.", "outro")
+        escolha = resposta.choices[0]
+        mensagem = escolha.message
         chamadas = tuple(
             ChamadaFerramenta(
                 # Alguns provedores compatíveis omitem o id; o contador evita repetir entre passos.
                 id=chamada.id or f"chamada_{next(self._contador)}",
                 nome=chamada.function.name,
                 argumentos=chamada.function.arguments or "",
+                extra=_campos_do_provedor(chamada),
             )
             for chamada in mensagem.tool_calls or []
         )
-        return MensagemModelo(conteudo=mensagem.content, chamadas=chamadas)
+        return MensagemModelo(
+            conteudo=mensagem.content,
+            chamadas=chamadas,
+            motivo_fim=getattr(escolha, "finish_reason", None),
+        )
+
+
+def _campos_do_provedor(chamada) -> dict | None:
+    """Campos além de id/type/function que o SDK preservou (pydantic `model_extra`)."""
+    extra = getattr(chamada, "model_extra", None)
+    return dict(extra) if isinstance(extra, dict) and extra else None
 
 
 def criar_modelo(config: Configuracao) -> ModeloLLM | None:

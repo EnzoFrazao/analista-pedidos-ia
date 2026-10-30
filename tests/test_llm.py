@@ -5,7 +5,9 @@ from types import SimpleNamespace
 import httpx2
 import openai
 import pytest
+from openai.types.chat import ChatCompletionMessageFunctionToolCall
 
+from analista.agente import mensagem_da_ferramenta, mensagem_do_assistente
 from analista.config import Configuracao
 from analista.llm import ClienteOpenAI, ErroDoProvedor, MensagemModelo, criar_modelo
 
@@ -33,9 +35,12 @@ class SdkFalso:
         self.chat = SimpleNamespace(completions=self.completions)
 
 
-def _resposta(conteudo: str | None = None, chamadas: list | None = None):
+def _resposta(
+    conteudo: str | None = None, chamadas: list | None = None, finish_reason: str | None = None
+):
     mensagem = SimpleNamespace(content=conteudo, tool_calls=chamadas)
-    return SimpleNamespace(choices=[SimpleNamespace(message=mensagem)])
+    escolha = SimpleNamespace(message=mensagem, finish_reason=finish_reason)
+    return SimpleNamespace(choices=[escolha])
 
 
 def _chamada(id_: str | None, nome: str, argumentos: str | None):
@@ -199,3 +204,77 @@ def test_criar_modelo_sem_chave_devolve_none():
 
 def test_criar_modelo_com_chave_devolve_cliente():
     assert isinstance(criar_modelo(Configuracao(llm_api_key=CHAVE)), ClienteOpenAI)
+
+
+def test_400_de_chave_invalida_vira_erro_de_chave_sem_vazar_a_chave():
+    # O Gemini responde 400, não 401, a uma chave inválida.
+    texto = f"API key not valid. Please pass a valid API key. ({CHAVE})"
+    erro = _erro_http(openai.BadRequestError, 400, texto)
+
+    with pytest.raises(ErroDoProvedor) as capturado:
+        _cliente(SdkFalso([erro])).completar([], [])
+
+    assert capturado.value.tipo == "chave"
+    assert "LLM_API_KEY" in str(capturado.value)
+    assert CHAVE not in str(capturado.value)
+
+
+def test_400_de_outro_motivo_continua_erro_generico():
+    erro = _erro_http(openai.BadRequestError, 400, "tools not supported")
+
+    with pytest.raises(ErroDoProvedor) as capturado:
+        _cliente(SdkFalso([erro])).completar([], [])
+
+    assert capturado.value.tipo == "outro"
+
+
+@pytest.mark.parametrize("escolhas", [[], None])
+def test_resposta_sem_choices_vira_erro_do_provedor(escolhas):
+    sdk = SdkFalso([SimpleNamespace(choices=escolhas)])
+
+    with pytest.raises(ErroDoProvedor) as capturado:
+        _cliente(sdk).completar([], [])
+
+    assert "não devolveu resposta" in str(capturado.value)
+    assert capturado.value.tipo == "outro"
+
+
+def test_guarda_o_finish_reason():
+    mensagem = _cliente(SdkFalso([_resposta("oi", None, "length")])).completar([], [])
+
+    assert mensagem.motivo_fim == "length"
+
+
+def test_campos_do_provedor_na_chamada_voltam_no_pedido_seguinte():
+    # Gemini 3 manda extra_content.google.thought_signature na chamada e exige que volte igual.
+    bruta = ChatCompletionMessageFunctionToolCall.model_validate(
+        {
+            "id": "g1",
+            "type": "function",
+            "function": {"name": "descrever_esquema", "arguments": ""},
+            "extra_content": {"google": {"thought_signature": "abc"}},
+        }
+    )
+    sdk = SdkFalso([_resposta(None, [bruta]), _resposta("pronto")])
+    cliente = _cliente(sdk)
+
+    primeira = cliente.completar([{"role": "user", "content": "oi"}], [])
+    assert primeira.chamadas[0].extra == {"extra_content": {"google": {"thought_signature": "abc"}}}
+
+    historico = [
+        {"role": "user", "content": "oi"},
+        mensagem_do_assistente(primeira),
+        mensagem_da_ferramenta("g1", "{}"),
+    ]
+    cliente.completar(historico, [])
+
+    reenviado = sdk.completions.chamadas[1]["messages"][1]["tool_calls"][0]
+    assert reenviado["extra_content"] == {"google": {"thought_signature": "abc"}}
+    assert reenviado["id"] == "g1"
+    assert reenviado["function"]["arguments"] == "{}"  # "" no histórico vira "{}"
+
+
+def test_chamada_sem_campos_extras_tem_extra_none():
+    sdk = SdkFalso([_resposta(None, [_chamada("c", "executar_sql", "{}")])])
+
+    assert _cliente(sdk).completar([], []).chamadas[0].extra is None

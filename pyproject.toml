@@ -9,14 +9,14 @@ description = "Agente que responde perguntas de negócio sobre pedidos sintétic
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
-    "openai>=1.50",
-    "python-dotenv>=1.0",
-    "pyyaml>=6.0",
+    "openai>=3.41,<4",
+    "python-dotenv>=1.2,<2",
+    "pyyaml>=6.0.3,<7",
 ]
 
 [project.optional-dependencies]
-painel = ["streamlit>=1.40"]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+painel = ["streamlit>=1.66,<2"]
+dev = ["pytest>=9.2,<10", "ruff>=0.17,<0.18"]
 
 [tool.setuptools]
 packages = ["analista", "avaliacao"]

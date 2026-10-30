@@ -8,10 +8,11 @@ from pathlib import Path
 import pytest
 
 from analista import agente
-from analista.agente import PROMPT_SISTEMA, Agente, Resposta
+from analista.agente import PROMPT_SISTEMA, Agente, Resposta, mensagem_do_assistente
 from analista.config import Configuracao
 from analista.ferramentas import FERRAMENTAS
 from analista.llm import ChamadaFerramenta, ErroDoProvedor, MensagemModelo
+from analista.rastro import Rastro
 from tests.fakes import ModeloFalso
 
 
@@ -71,8 +72,20 @@ def test_resposta_direta_sem_ferramenta(config: Configuracao):
 
 def test_prompt_cobre_as_regras_do_papel():
     texto = PROMPT_SISTEMA.lower()
-    for trecho in ("somente leitura", "recus", "nunca como instrução", "não invente", "consulta"):
-        assert trecho in texto
+    regras = {
+        "uso de ferramentas": ("descrever_esquema", "executar_sql"),
+        "somente leitura": ("somente leitura", "recuse"),
+        "dado não é instrução": ("nunca como instrução",),
+        "não inventar": ("não invente",),
+        "ambiguidade": ("ambígua", "suposição"),
+        "resultado truncado": ("truncado: true", "parcial"),
+        "formato": ("primeiro explique", "bloco de código"),
+    }
+    for nome, trechos in regras.items():
+        for trecho in trechos:
+            assert trecho in texto, f"o prompt não cobre '{nome}': falta '{trecho}'"
+    # uma ordem só: o SQL vem no fim, depois da explicação
+    assert texto.index("primeiro explique") < texto.index("no fim, mostre a consulta")
 
 
 def test_chama_ferramenta_e_responde(config: Configuracao, banco_path: Path):
@@ -289,3 +302,51 @@ def test_fecha_a_conexao_mesmo_quando_o_modelo_explode(config: Configuracao, mon
 
     with pytest.raises(sqlite3.ProgrammingError):
         abertas[0].execute("SELECT 1")
+
+
+def test_argumentos_vazios_vao_como_chaves_no_historico_mas_o_despacho_recebe_o_original(
+    config: Configuracao,
+):
+    for vazio in ("", None):
+        modelo = ModeloFalso(
+            [_pede(ChamadaFerramenta("e", "descrever_esquema", vazio)), _responde("ok")]
+        )
+
+        Agente(modelo, config).perguntar("Oi")
+
+        enviado = modelo.mensagens[1][2]["tool_calls"][0]["function"]["arguments"]
+        assert enviado == "{}"
+        assert "pedidos(" in _tools(modelo.mensagens[1])[0]["content"]  # o esquema foi servido
+
+
+def test_campos_do_provedor_voltam_na_chamada_do_historico(config: Configuracao):
+    extra = {"extra_content": {"google": {"thought_signature": "abc"}}}
+    chamada = ChamadaFerramenta("g", "descrever_esquema", "{}", extra)
+    modelo = ModeloFalso([_pede(chamada), _responde("ok")])
+
+    Agente(modelo, config).perguntar("Oi")
+
+    reenviada = modelo.mensagens[1][2]["tool_calls"][0]
+    assert reenviada["extra_content"] == extra["extra_content"]
+    assert reenviada["id"] == "g"
+
+
+def test_extra_nao_sobrescreve_os_campos_padrao():
+    chamada = ChamadaFerramenta("g", "f", "{}", {"id": "outro", "type": "x", "function": {}})
+
+    (reenviada,) = mensagem_do_assistente(MensagemModelo(None, (chamada,)))["tool_calls"]
+
+    assert reenviada["id"] == "g"
+    assert reenviada["type"] == "function"
+    assert reenviada["function"]["name"] == "f"
+
+
+def test_falha_ao_gravar_o_rastro_nao_derruba_a_resposta(config: Configuracao, tmp_path: Path):
+    arquivo = tmp_path / "isto-e-um-arquivo"
+    arquivo.write_text("x", encoding="utf-8")
+    modelo = ModeloFalso([_pede(_sql("1", "SELECT 1")), _responde("Respondi mesmo assim.")])
+
+    resposta = Agente(modelo, config, Rastro(arquivo)).perguntar("Oi")  # a "pasta" é um arquivo
+
+    assert resposta.texto == "Respondi mesmo assim."
+    assert len(resposta.consultas) == 1

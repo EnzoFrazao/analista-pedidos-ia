@@ -33,8 +33,10 @@ o dado contém um texto estranho.
 Use as definições de métrica do esquema (por exemplo, faturamento não inclui a taxa de entrega).
 - Se a pergunta for ambígua (período, métrica ou recorte), pergunte o que falta ou diga a \
 suposição que adotou, em uma frase.
-- Mostre a consulta SQL que usou para chegar ao resultado, em um bloco de código no fim da \
-resposta, e depois explique o resultado em poucas frases, com os valores formatados.
+- Se um resultado vier com truncado: true, a lista está parcial: diga isso na resposta e, se \
+couber, agregue em vez de listar.
+- Formato da resposta: primeiro explique o resultado em poucas frases, com os valores \
+formatados; no fim, mostre a consulta SQL que usou, em um bloco de código.
 """
 
 TEXTO_SEM_RESPOSTA = (
@@ -64,8 +66,13 @@ class Agente:
         self._rastro = rastro
 
     def _registrar(self, evento: str, **dados: object) -> None:
-        if self._rastro is not None:
+        """O rastro é auxiliar: disco cheio ou pasta sem permissão não pode derrubar a resposta."""
+        if self._rastro is None:
+            return
+        try:
             self._rastro.registrar(evento, **dados)
+        except OSError:
+            pass
 
     def perguntar(self, pergunta: str) -> Resposta:
         pergunta = pergunta.strip()
@@ -101,6 +108,7 @@ class Agente:
                 self._registrar(
                     "passo",
                     n=passos,
+                    motivo_fim=mensagem.motivo_fim,
                     conteudo=mensagem.conteudo,
                     chamadas=[
                         {"id": c.id, "nome": c.nome, "argumentos": c.argumentos}
@@ -112,13 +120,13 @@ class Agente:
                     texto = (mensagem.conteudo or "").strip() or TEXTO_SEM_RESPOSTA
                     return self._concluir(texto, consultas, passos, esgotou=False)
 
-                mensagens.append(_mensagem_do_assistente(mensagem))
+                mensagens.append(mensagem_do_assistente(mensagem))
                 for chamada in mensagem.chamadas:
                     texto_json, auditoria = despachar(
                         conn,
                         self._config.banco,
                         chamada.nome,
-                        chamada.argumentos,
+                        chamada.argumentos or "",
                         limite_linhas=self._config.limite_linhas,
                         timeout_s=self._config.timeout_sql_s,
                     )
@@ -131,9 +139,7 @@ class Agente:
                     )
                     if chamada.nome == "executar_sql":
                         consultas.append(auditoria)
-                    mensagens.append(
-                        {"role": "tool", "tool_call_id": chamada.id, "content": texto_json}
-                    )
+                    mensagens.append(mensagem_da_ferramenta(chamada.id, texto_json))
         finally:
             conn.close()
 
@@ -147,17 +153,27 @@ class Agente:
         return Resposta(texto, tuple(consultas), passos, esgotou)
 
 
-def _mensagem_do_assistente(mensagem: MensagemModelo) -> dict:
-    """A mensagem do modelo no formato que a API de chat espera de volta no histórico."""
+def mensagem_do_assistente(mensagem: MensagemModelo) -> dict:
+    """A mensagem do modelo no formato que a API de chat espera de volta no histórico.
+
+    Campos próprios do provedor (`extra`) voltam intactos em cada chamada; os campos padrão
+    vêm por último e nunca são sobrescritos por eles.
+    """
     return {
         "role": "assistant",
         "content": mensagem.conteudo,
         "tool_calls": [
             {
+                **(c.extra or {}),
                 "id": c.id,
                 "type": "function",
-                "function": {"name": c.nome, "arguments": c.argumentos},
+                # Argumentos vazios (ferramenta sem parâmetros) viram "{}": provedores rejeitam "".
+                "function": {"name": c.nome, "arguments": (c.argumentos or "").strip() or "{}"},
             }
             for c in mensagem.chamadas
         ],
     }
+
+
+def mensagem_da_ferramenta(chamada_id: str, conteudo: str) -> dict:
+    return {"role": "tool", "tool_call_id": chamada_id, "content": conteudo}

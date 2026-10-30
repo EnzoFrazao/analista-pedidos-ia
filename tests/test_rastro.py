@@ -135,3 +135,13 @@ def test_nao_grava_a_chave_nem_o_prompt_de_sistema(banco_path: Path, tmp_path: P
     assert "SEGREDO-DA-CHAVE-999" not in bruto
     assert PROMPT_SISTEMA not in bruto
     assert PROMPT_SISTEMA[:60] not in bruto
+
+
+def test_registra_o_motivo_de_fim_do_passo(banco_path: Path, tmp_path: Path):
+    rastro = Rastro(tmp_path)
+    modelo = ModeloFalso([MensagemModelo("cortado", (), "length")])
+
+    Agente(modelo, Configuracao(banco=banco_path), rastro).perguntar("Oi")
+
+    passo = next(linha for linha in _linhas(rastro) if linha["evento"] == "passo")
+    assert passo["motivo_fim"] == "length"
