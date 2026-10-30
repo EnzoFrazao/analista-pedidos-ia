@@ -8,6 +8,7 @@ e sobe como exceção.
 """
 
 import json
+import math
 import sqlite3
 from pathlib import Path
 
@@ -73,10 +74,6 @@ _MENSAGENS_DE_ERRO = {
 }
 
 
-def _consultar(conn: sqlite3.Connection, sql: str) -> list:
-    return conn.execute(sql).fetchall()
-
-
 def descrever_esquema(caminho: Path) -> str:
     """Texto com o esquema, os valores distintos, o período e as definições de métrica.
 
@@ -123,7 +120,17 @@ def descrever_esquema(caminho: Path) -> str:
 
 
 def _json(conteudo: dict) -> str:
-    return json.dumps(conteudo, ensure_ascii=False)
+    # allow_nan=False: qualquer NaN/Infinity que escape da normalização estoura nos testes.
+    return json.dumps(conteudo, ensure_ascii=False, allow_nan=False)
+
+
+def _celula(valor: object) -> object:
+    """Valor de uma célula como JSON válido: blob vira texto curto, não finito vira null."""
+    if isinstance(valor, bytes):
+        return f"<blob {len(valor)} bytes>"
+    if isinstance(valor, float) and not math.isfinite(valor):
+        return None
+    return valor
 
 
 def _auditoria(
@@ -134,7 +141,7 @@ def _auditoria(
     resultado: ResultadoSql | None = None,
 ) -> dict:
     colunas = list(resultado.colunas) if resultado else []
-    linhas = [list(linha) for linha in resultado.linhas] if resultado else []
+    linhas = [[_celula(v) for v in linha] for linha in resultado.linhas] if resultado else []
     return {
         "sql": sql,
         "ok": ok,
@@ -179,7 +186,11 @@ def despachar(
     limite_linhas: int,
     timeout_s: float,
 ) -> tuple[str, dict]:
-    """Atende uma chamada de ferramenta do modelo: (JSON para o modelo, dicionário de auditoria)."""
+    """Atende uma chamada de ferramenta do modelo: (JSON para o modelo, dicionário de auditoria).
+
+    As `linhas` da auditoria são listas (e já normalizadas: blob vira texto, não finito vira
+    null); quem reconstrói um `ResultadoSql` a partir delas deve converter cada linha em tupla.
+    """
     if nome not in ("descrever_esquema", "executar_sql"):
         return _erro(
             "ferramenta_inexistente",

@@ -196,3 +196,22 @@ def test_ferramentas_no_formato_da_api_de_chat() -> None:
     for trecho in ("SELECT", "WITH", "50", "truncado", "itens_pedido", "LIKE", "glob", "printf"):
         assert trecho in descricao
     assert "descrever_esquema" in descricao
+
+
+@pytest.mark.parametrize("consulta", ["SELECT x'00ff'", "SELECT CAST('a' AS BLOB)"])
+def test_blob_vira_texto_no_modelo_e_na_auditoria(conn, banco_path: Path, consulta: str) -> None:
+    n_bytes = 2 if "00ff" in consulta else 1
+    resposta, auditoria = _chamar(conn, banco_path, "executar_sql", _sql(consulta))
+    esperado = [[f"<blob {n_bytes} bytes>"]]
+    assert resposta["linhas"] == esperado
+    assert auditoria["ok"] is True and auditoria["linhas"] == esperado
+
+
+@pytest.mark.parametrize("valor", ["1e999", "-1e999"])
+def test_infinito_vira_null_no_modelo_e_na_auditoria(conn, banco_path: Path, valor: str) -> None:
+    texto, auditoria = despachar(
+        conn, banco_path, "executar_sql", _sql(f"SELECT {valor}"), limite_linhas=50, timeout_s=2.0
+    )
+    assert "Infinity" not in texto and "NaN" not in texto
+    assert json.loads(texto)["linhas"] == [[None]]
+    assert auditoria["linhas"] == [[None]]
