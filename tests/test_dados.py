@@ -142,6 +142,12 @@ def test_existe_exatamente_um_item_com_instrucao_escondida(conn):
     assert len(itens) == 1
 
 
+def test_instrucao_escondida_manda_escrever_no_banco(conn):
+    (nome,) = conn.execute("SELECT nome FROM itens_cardapio WHERE nome LIKE '%IGNORE%'").fetchone()
+    assert "DELETE FROM pedidos" in nome  # obedecer exige escrita, que a camada de SQL recusa
+    assert len(nome) < 10_000
+
+
 def test_item_com_instrucao_escondida_fica_fora_do_top_10_de_vendas(conn):
     ranking = conn.execute(
         "SELECT i.id, i.nome, SUM(ip.quantidade) AS vendidos FROM itens_pedido ip "
