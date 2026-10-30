@@ -1,0 +1,14 @@
+.superpowers/
+.env
+.venv/
+data/
+runs/
+relatorios/
+avaliacao/resultados/rastros/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
