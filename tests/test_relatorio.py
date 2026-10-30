@@ -1,5 +1,6 @@
 """Relatório semanal: KPIs por SQL, checagem de números e fallback. Modelo sempre falso."""
 
+import math
 import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
@@ -144,7 +145,51 @@ def test_variacao_percentual_arredondada_a_uma_casa():
     assert resultado["faturamento"] == -10.0
     assert resultado["ticket_medio"] is None  # atual nulo
     assert resultado["tempo_medio_entrega_min"] == 25.0
-    assert resultado["cancelamento_pct"] is None  # anterior zero
+    assert resultado["cancelamento_pct"] == 5.0  # pontos percentuais, não relativo
+
+
+def test_variacao_do_cancelamento_e_em_pontos_percentuais():
+    atual = {**_kpis_exemplo(), "cancelamento_pct": 5.0}
+    anterior = {**_kpis_exemplo(), "cancelamento_pct": 5.8}
+    assert variacoes(atual, anterior)["cancelamento_pct"] == -0.8
+    # None só quando um dos lados é nulo
+    assert variacoes({**atual, "cancelamento_pct": None}, anterior)["cancelamento_pct"] is None
+    assert variacoes(atual, {**anterior, "cancelamento_pct": None})["cancelamento_pct"] is None
+
+
+def test_variacao_nunca_e_zero_negativo():
+    atual = {**_kpis_exemplo(), "faturamento": 99.96, "cancelamento_pct": 4.96}
+    anterior = {**_kpis_exemplo(), "faturamento": 100.0, "cancelamento_pct": 5.0}
+    resultado = variacoes(atual, anterior)
+    for chave in ("faturamento", "cancelamento_pct"):
+        assert resultado[chave] == 0.0
+        assert math.copysign(1, resultado[chave]) == 1
+
+
+def test_tabela_mostra_cancelamento_em_pontos_percentuais():
+    kpis = {**_kpis_exemplo(), "cancelamento_pct": 5.0}
+    var = {**_variacoes_exemplo(), "cancelamento_pct": 0.8}
+    linha_mais = [x for x in relatorio._tabela(kpis, var) if x.startswith("| Cancelamento")]
+    assert linha_mais == ["| Cancelamento | 5,0% | +0,8 p.p. |"]
+    var["cancelamento_pct"] = -0.8
+    linha_menos = [x for x in relatorio._tabela(kpis, var) if x.startswith("| Cancelamento")]
+    assert linha_menos == ["| Cancelamento | 5,0% | -0,8 p.p. |"]
+    # os demais continuam em % relativo
+    assert "| Faturamento | R$ 12.345,67 | -7,3% |" in relatorio._tabela(kpis, var)
+
+
+def test_prompt_do_modelo_rotula_cancelamento_como_pontos_percentuais():
+    kpis = {**_kpis_exemplo(), "cancelamento_pct": 5.0}
+    var = {**_variacoes_exemplo(), "cancelamento_pct": -0.8}
+    dados = relatorio._dados_para_o_modelo(SEMANA, SEMANA_FIM, kpis, var)
+    assert "Cancelamento: 5,0% (variação -0,8 p.p., em pontos percentuais)" in dados
+
+
+def test_checagem_aceita_a_variacao_do_cancelamento_em_pontos_percentuais():
+    kpis = {**_kpis_exemplo(), "cancelamento_pct": 5.0}
+    var = {**_variacoes_exemplo(), "cancelamento_pct": -0.8}
+    texto = "O cancelamento caiu 0,8 p.p., para 5,0%."
+    assert numeros_nao_suportados(texto, kpis, var, PERIODO) == set()
 
 
 @pytest.mark.parametrize("inicio", [date(2026, 9, 22), date(2026, 9, 27)])
@@ -157,6 +202,35 @@ def test_semana_que_nao_comeca_na_segunda_levanta_value_error(conn, inicio: date
 def test_semana_fora_do_periodo_dos_dados_levanta_value_error(conn, inicio: date):
     with pytest.raises(ValueError, match="período"):
         gerar_relatorio(conn, None, inicio)
+
+
+def test_semana_comeca_no_primeiro_segundo_da_segunda_e_acaba_no_ultimo_do_domingo(tmp_path):
+    caminho = tmp_path / "limite.db"
+    ligacao = sqlite3.connect(caminho)
+    ligacao.executescript(
+        """
+        CREATE TABLE itens_cardapio (id INTEGER PRIMARY KEY, nome TEXT, categoria TEXT, preco REAL);
+        CREATE TABLE pedidos (id INTEGER PRIMARY KEY, data_hora TEXT, bairro TEXT, canal TEXT,
+            status TEXT, valor REAL, taxa_entrega REAL, tempo_entrega_min INTEGER, nota INTEGER);
+        CREATE TABLE itens_pedido (pedido_id INTEGER, item_id INTEGER, quantidade INTEGER,
+            preco_unit REAL);
+        INSERT INTO pedidos (data_hora, bairro, canal, status, valor, taxa_entrega,
+            tempo_entrega_min) VALUES
+          ('2026-09-20 23:59:59', 'Centro', 'balcao', 'entregue', 1, 0, 10),
+          ('2026-09-21 00:00:00', 'Centro', 'balcao', 'entregue', 10, 0, 10),
+          ('2026-09-27 23:59:59', 'Centro', 'balcao', 'entregue', 100, 0, 10),
+          ('2026-09-28 00:00:00', 'Centro', 'balcao', 'entregue', 1000, 0, 10);
+        """
+    )
+    ligacao.commit()
+    ligacao.close()
+    conexao = abrir_somente_leitura(caminho)
+    try:
+        kpis = calcular_kpis(conexao, SEMANA, SEMANA_FIM)
+    finally:
+        conexao.close()
+    assert kpis["pedidos"] == 2
+    assert kpis["faturamento"] == 110
 
 
 # --- checagem de números ----------------------------------------------------------------------
@@ -189,17 +263,54 @@ def test_checagem_tolera_arredondamento_a_uma_casa():
     assert numeros_nao_suportados("Tempo de 32,5 min.", kpis, var, PERIODO) == {"32,5"}
 
 
-def test_checagem_aceita_dias_mes_e_ano_do_periodo():
-    texto = "Semana de 21 a 27 de setembro de 2026 (21/09/2026 a 27/09/2026)."
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Semana de 21 a 27 de setembro de 2026.",
+        "Semana de 21/09/2026 a 27/09/2026.",
+        "Semana de 21/09 a 27/09/2026.",
+        "Semana de 2026-09-21 a 2026-09-27.",
+        "Em setembro de 2026, de 21 a 27 de setembro.",
+    ],
+)
+def test_checagem_aceita_dias_mes_e_ano_dentro_de_datas_do_periodo(texto: str):
     assert numeros_nao_suportados(texto, _kpis_exemplo(), _variacoes_exemplo(), PERIODO) == set()
 
 
-def test_checagem_aceita_apenas_as_contagens_do_modelo_de_texto():
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        ("Foram 27 pedidos.", {"27"}),
+        ("Foram 25 pedidos atrasados.", {"25"}),
+        ("Foram 5 pedidos.", {"5"}),
+        ("Foram 3 pedidos cancelados.", {"3"}),
+        ("Foram 9 pedidos.", {"9"}),
+        ("Em 2026 foram 2026 pedidos.", {"2026"}),
+        ("Semana de 28/09/2026 a 04/10/2026.", {"28", "04", "10"}),
+        ("Semana de 21 a 30 de setembro de 2026.", {"30"}),
+    ],
+)
+def test_checagem_nao_libera_inteiro_solto_so_porque_e_dia_mes_ou_contagem(texto, esperado):
+    resultado = numeros_nao_suportados(texto, _kpis_exemplo(), _variacoes_exemplo(), PERIODO)
+    assert esperado <= resultado
+
+
+def test_checagem_aceita_as_contagens_so_antes_de_itens_e_bairros():
     kpis, var = _kpis_exemplo(), _variacoes_exemplo()
-    assert relatorio.CONTAGENS_PERMITIDAS == frozenset({3, 5})
     texto = "Os 5 itens mais vendidos e os 3 bairros mais lentos."
     assert numeros_nao_suportados(texto, kpis, var, PERIODO) == set()
     assert numeros_nao_suportados("Os 4 itens mais vendidos.", kpis, var, PERIODO) == {"4"}
+    assert numeros_nao_suportados("Os 3 itens mais vendidos.", kpis, var, PERIODO) == {"3"}
+    assert numeros_nao_suportados("Os 5 bairros mais lentos.", kpis, var, PERIODO) == {"5"}
+
+
+def test_checagem_entende_decimal_com_ponto_como_um_numero_so():
+    kpis, var = _kpis_exemplo(), _variacoes_exemplo()
+    assert numeros_nao_suportados("Tempo de 32.4 min.", kpis, var, PERIODO) == set()
+    # "9.5" é um número só (9,5), não os inteiros 9 e 5
+    assert numeros_nao_suportados("Tempo de 9.5 min.", kpis, var, PERIODO) == {"9.5"}
+    # grupo de milhar continua sendo milhar
+    assert numeros_nao_suportados("Foram 1.234 pedidos.", kpis, var, PERIODO) == set()
 
 
 def test_checagem_ignora_nomes_e_valores_nulos():
@@ -235,7 +346,7 @@ def test_relatorio_sem_modelo_funciona(conn: sqlite3.Connection):
 
 def test_o_relatorio_mostra_os_bairros_mais_lentos_da_semana_de_21_a_27_de_setembro(conn):
     texto = gerar_relatorio(conn, None, SEMANA)
-    secao = texto.split("Bairros mais lentos", 1)[1]
+    secao = texto.split("## Bairros mais lentos", 1)[1]
     assert "Cohama" in secao or "Turu" in secao
 
 
@@ -246,6 +357,7 @@ def test_relatorio_usa_o_paragrafo_do_modelo_quando_os_numeros_conferem(conn):
     texto = gerar_relatorio(conn, modelo, SEMANA)
     assert frase in texto
     assert "escrito pelo modelo" in texto
+    assert "algarismos" in texto  # o rótulo não promete checar números por extenso
     assert modelo.ferramentas == [[]]  # sem ferramentas
     prompt = "\n".join(str(m["content"]) for m in modelo.mensagens[0])
     assert "Faturamento" in prompt and "21/09/2026" in prompt
@@ -290,7 +402,7 @@ def test_cli_imprime_o_markdown(banco_path: Path, monkeypatch, capsys):
     codigo = relatorio.main(["--semana", "2026-09-21", "--sem-modelo"])
     assert codigo == 0
     saida = capsys.readouterr().out
-    assert saida.startswith("# ") and "Bairros mais lentos" in saida
+    assert saida.startswith("# ") and "## Bairros mais lentos" in saida
 
 
 def test_cli_com_saida_grava_o_arquivo_em_utf8(banco_path: Path, tmp_path, monkeypatch, capsys):

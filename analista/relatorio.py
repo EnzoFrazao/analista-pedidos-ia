@@ -26,11 +26,12 @@ PASTA_RELATORIOS = RAIZ / "relatorios"
 N_ITENS = 5
 N_BAIRROS = 3
 MIN_PEDIDOS_BAIRRO = 30
-# Contagens que o próprio modelo de relatório cita ("os 5 itens", "os 3 bairros"): liberadas
-# na checagem para o texto poder dizer quantos itens e bairros está listando.
-CONTAGENS_PERMITIDAS = frozenset({N_ITENS, N_BAIRROS})
+# Contagens que o próprio modelo de relatório cita ("os 5 itens", "os 3 bairros"): só valem
+# coladas ao substantivo, para o texto poder dizer quantos itens e bairros está listando.
+CONTAGENS_POR_SUBSTANTIVO = {"itens": N_ITENS, "bairros": N_BAIRROS}
 
 _TOLERANCIA = 0.05
+CHAVE_EM_PONTOS = "cancelamento_pct"  # a variação desta chave é em pontos percentuais
 _CHAVES_VARIACAO = (
     "pedidos",
     "faturamento",
@@ -38,9 +39,37 @@ _CHAVES_VARIACAO = (
     "tempo_medio_entrega_min",
     "cancelamento_pct",
 )
-_NUMERO = re.compile(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?")
+# Milhar com ponto (1.234,5), decimal com ponto (3.5) ou número simples/decimal com vírgula.
+_NUMERO = re.compile(r"\d{1,3}(?:\.\d{3})+(?!\d)(?:,\d+)?|\d+\.\d+|\d+(?:,\d+)?")
+_MESES = [
+    "janeiro",
+    "fevereiro",
+    "março",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+]
+_MES_NOME = "|".join(_MESES)
+# Datas em que dia, mês e ano são aceitos; fora delas esses números valem como qualquer outro.
+_DATA_EXTENSO = re.compile(
+    rf"\b(\d{{1,2}})(?: a (\d{{1,2}}))? de ({_MES_NOME})(?: de (\d{{4}}))?\b", re.IGNORECASE
+)
+_DATA_ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+_DATA_BARRA = re.compile(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\b")
+_ANO_COM_DE = re.compile(r"\bde (\d{4})\b", re.IGNORECASE)
+_CONTAGEM = re.compile(
+    "|".join(rf"\b{n}\s+{nome}\b" for nome, n in CONTAGENS_POR_SUBSTANTIVO.items()), re.IGNORECASE
+)
 
-_ROTULO_MODELO = "_Resumo escrito pelo modelo; os números foram conferidos contra os KPIs._"
+_ROTULO_MODELO = (
+    "_Resumo escrito pelo modelo; os números em algarismos foram conferidos contra os KPIs._"
+)
 _ROTULO_CODIGO = "_Resumo montado pelo código a partir dos KPIs (sem o modelo)._"
 
 _INSTRUCAO_DO_SISTEMA = (
@@ -68,10 +97,13 @@ def validar_semana(semana_inicio: date) -> None:
         )
 
 
-def _filtro(inicio: date, fim: date) -> str:
+def _filtro(inicio: date, fim: date, coluna: str = "data_hora") -> str:
     # data_hora é TEXTO 'AAAA-MM-DD HH:MM:SS'; as datas vêm de `date`, nunca de texto livre.
     seguinte = fim + timedelta(days=1)
-    return f"data_hora >= '{inicio.isoformat()} 00:00:00' AND data_hora < '{seguinte.isoformat()} 00:00:00'"
+    return (
+        f"{coluna} >= '{inicio.isoformat()} 00:00:00' "
+        f"AND {coluna} < '{seguinte.isoformat()} 00:00:00'"
+    )
 
 
 # --- KPIs -------------------------------------------------------------------------------------
@@ -103,7 +135,7 @@ def calcular_kpis(conn: sqlite3.Connection, inicio: date, fim: date) -> dict:
             FROM itens_pedido i
             JOIN pedidos p ON p.id = i.pedido_id
             JOIN itens_cardapio c ON c.id = i.item_id
-            WHERE p.status <> 'cancelado' AND {_filtro(inicio, fim).replace("data_hora", "p.data_hora")}
+            WHERE p.status <> 'cancelado' AND {_filtro(inicio, fim, "p.data_hora")}
             GROUP BY c.id, c.nome
             ORDER BY vendidos DESC, c.nome
             LIMIT {N_ITENS}""",
@@ -134,14 +166,23 @@ def calcular_kpis(conn: sqlite3.Connection, inicio: date, fim: date) -> dict:
 
 
 def variacoes(atual: dict, anterior: dict) -> dict:
-    """Variação percentual (1 casa) de cada KPI escalar; `None` se o anterior for zero ou nulo."""
+    """Variação de cada KPI escalar, com 1 casa e nunca -0,0.
+
+    Pedidos, faturamento, ticket e tempo: variação percentual, `None` se o anterior for zero ou
+    nulo. Cancelamento: diferença em pontos percentuais (atual - anterior), `None` só se um dos
+    lados for nulo, porque a variação relativa de uma taxa engana.
+    """
     resultado: dict[str, float | None] = {}
     for chave in _CHAVES_VARIACAO:
         a, b = atual.get(chave), anterior.get(chave)
-        if a is None or not b:
+        if a is None or b is None:
+            resultado[chave] = None
+        elif chave == CHAVE_EM_PONTOS:
+            resultado[chave] = round(a - b, 1) or 0.0  # `or 0.0` troca -0.0 por 0.0
+        elif b == 0:
             resultado[chave] = None
         else:
-            resultado[chave] = round((a - b) / b * 100, 1)
+            resultado[chave] = round((a - b) / b * 100, 1) or 0.0
     return resultado
 
 
@@ -168,10 +209,11 @@ def _minutos(valor: float) -> str:
     return f"{_decimal(valor, 1)} min"
 
 
-def _variacao(valor: float | None) -> str:
+def _variacao(valor: float | None, em_pontos: bool = False) -> str:
     if valor is None:
         return "sem base de comparação"
-    return f"{'+' if valor > 0 else ''}{_decimal(valor, 1)}%"
+    sinal = "+" if valor > 0 else ""
+    return f"{sinal}{_decimal(valor, 1)}{' p.p.' if em_pontos else '%'}"
 
 
 def _ou_traco(valor, formatar) -> str:
@@ -198,31 +240,81 @@ def _valores_numericos(obj) -> Iterable[float]:
             yield from _valores_numericos(valor)
 
 
+def _para_float(achado: str) -> float:
+    if re.fullmatch(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?", achado):
+        return float(achado.replace(".", "").replace(",", "."))  # milhar: 1.234,5
+    return float(achado.replace(",", "."))  # 3,5 ou 3.5
+
+
+def _datas_validas(achados: list[str], aceitos: set[int]) -> set[str]:
+    return {x for x in achados if x and int(x) not in aceitos}
+
+
 def numeros_nao_suportados(
     texto: str, kpis: dict, variacoes: dict, periodo: tuple[date, date]
 ) -> set[str]:
-    """Números do texto (pt-BR) que não aparecem nos KPIs, nas variações ou no período.
+    """Números do texto (pt-BR, em algarismos) que não aparecem nos KPIs nem no período.
 
     Aceitos: todo valor numérico de `kpis` e `variacoes` (as variações também em módulo, porque
-    "queda de 7,3%" cita -7,3), os dias, os meses e o ano do período, e as contagens de
-    `CONTAGENS_PERMITIDAS`. A comparação arredonda os dois lados a 1 casa e tolera 0,05.
-    Devolve os números como estão escritos no texto.
+    "queda de 7,3%" cita -7,3); dia, mês e ano do período, mas só dentro de uma data
+    (`21/09/2026`, `21/09`, `21 a 27 de setembro de 2026`, `2026-09-21`, `de 2026`); e 5 antes
+    de "itens" / 3 antes de "bairros" (`CONTAGENS_POR_SUBSTANTIVO`). Fora disso um "27" ou "5"
+    solto é um número como outro qualquer e precisa estar nos KPIs. A comparação arredonda os
+    dois lados a 1 casa e tolera 0,05. Devolve os números como estão escritos no texto.
     """
-    permitidos = set(CONTAGENS_PERMITIDAS)
     inicio, fim = periodo
+    dias, meses, anos = set(), set(), set()
     dia = inicio
     while dia <= fim:
-        permitidos.update((dia.day, dia.month, dia.year))
+        dias.add(dia.day)
+        meses.add(dia.month)
+        anos.add(dia.year)
         dia += timedelta(days=1)
-    for valor in (*_valores_numericos(kpis), *_valores_numericos(variacoes)):
-        permitidos.add(valor)
-        permitidos.add(abs(valor))
-    arredondados = [round(float(p), 1) for p in permitidos]
 
     suspeitos: set[str] = set()
-    for achado in _NUMERO.findall(texto):
-        valor = round(float(achado.replace(".", "").replace(",", ".")), 1)
-        if not any(abs(valor - p) <= _TOLERANCIA + 1e-9 for p in arredondados):
+    restante = texto
+
+    def tirar(padrao: re.Pattern, conferir) -> None:
+        nonlocal restante
+
+        def trocar(m: re.Match) -> str:
+            suspeitos.update(conferir(m))
+            return " " * len(m.group(0))
+
+        restante = padrao.sub(trocar, restante)
+
+    def extenso(m: re.Match) -> set[str]:
+        d1, d2, mes, ano = m.groups()
+        erros = _datas_validas([d1, d2], dias) | _datas_validas([ano], anos)
+        if _MESES.index(mes.lower()) + 1 not in meses:
+            erros.add(mes)
+        return erros
+
+    def iso(m: re.Match) -> set[str]:
+        ano, mes, d = m.groups()
+        return (
+            _datas_validas([ano], anos) | _datas_validas([mes], meses) | _datas_validas([d], dias)
+        )
+
+    def barra(m: re.Match) -> set[str]:
+        d, mes, ano = m.groups()
+        return (
+            _datas_validas([d], dias) | _datas_validas([mes], meses) | _datas_validas([ano], anos)
+        )
+
+    tirar(_DATA_EXTENSO, extenso)
+    tirar(_DATA_ISO, iso)
+    tirar(_DATA_BARRA, barra)
+    tirar(_ANO_COM_DE, lambda m: _datas_validas([m.group(1)], anos))
+    tirar(_CONTAGEM, lambda m: set())  # só 5 itens / 3 bairros casam; o resto segue a regra geral
+
+    permitidos = set()
+    for valor in (*_valores_numericos(kpis), *_valores_numericos(variacoes)):
+        permitidos.add(round(valor, 1))
+        permitidos.add(round(abs(valor), 1))
+    for achado in _NUMERO.findall(restante):
+        valor = round(_para_float(achado), 1)
+        if not any(abs(valor - p) <= _TOLERANCIA + 1e-9 for p in permitidos):
             suspeitos.add(achado)
     return suspeitos
 
@@ -285,7 +377,8 @@ def _dados_para_o_modelo(inicio: date, fim: date, kpis: dict, var: dict) -> str:
         ),
         (
             f"Cancelamento: {_ou_traco(kpis['cancelamento_pct'], _percentual)} "
-            f"(variação {_variacao(var.get('cancelamento_pct'))})"
+            f"(variação {_variacao(var.get('cancelamento_pct'), em_pontos=True)}, "
+            "em pontos percentuais)"
         ),
         f"{N_BAIRROS} bairros mais lentos (tempo médio de entrega):",
         *(
@@ -335,24 +428,28 @@ def _paragrafo_do_modelo(
 
 def _tabela(kpis: dict, var: dict) -> list[str]:
     linhas = [
-        ("Pedidos válidos", _inteiro(kpis["pedidos"]), var.get("pedidos")),
-        ("Faturamento", _dinheiro(kpis["faturamento"]), var.get("faturamento")),
-        ("Ticket médio", _ou_traco(kpis["ticket_medio"], _dinheiro), var.get("ticket_medio")),
+        ("Pedidos válidos", _inteiro(kpis["pedidos"]), _variacao(var.get("pedidos"))),
+        ("Faturamento", _dinheiro(kpis["faturamento"]), _variacao(var.get("faturamento"))),
+        (
+            "Ticket médio",
+            _ou_traco(kpis["ticket_medio"], _dinheiro),
+            _variacao(var.get("ticket_medio")),
+        ),
         (
             "Tempo médio de entrega",
             _ou_traco(kpis["tempo_medio_entrega_min"], _minutos),
-            var.get("tempo_medio_entrega_min"),
+            _variacao(var.get("tempo_medio_entrega_min")),
         ),
         (
             "Cancelamento",
             _ou_traco(kpis["cancelamento_pct"], _percentual),
-            var.get("cancelamento_pct"),
+            _variacao(var.get("cancelamento_pct"), em_pontos=True),
         ),
     ]
     return [
         "| KPI | Semana | Variação |",
         "|---|---:|---:|",
-        *(f"| {nome} | {valor} | {_variacao(v)} |" for nome, valor, v in linhas),
+        *(f"| {nome} | {valor} | {variacao} |" for nome, valor, variacao in linhas),
     ]
 
 
