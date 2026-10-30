@@ -281,6 +281,50 @@ def test_rejeita_funcao_fora_da_lista(conn: sqlite3.Connection, sql: str) -> Non
 @pytest.mark.parametrize(
     "sql",
     [
+        "SELECT nome FROM itens_cardapio WHERE nome GLOB '*a*'",
+        "SELECT printf('%.2f', avg(valor)) FROM pedidos",
+    ],
+)
+def test_glob_e_printf_continuam_fora(conn: sqlite3.Connection, sql: str) -> None:
+    assert _motivo(conn, sql) == "funcao"
+
+
+def test_aceita_like(conn: sqlite3.Connection) -> None:
+    (linha,) = executar_consulta(
+        conn, "SELECT count(*) FROM pedidos WHERE bairro LIKE '%a%'"
+    ).linhas
+    assert 0 < linha[0] <= 8000
+
+
+def test_like_com_padrao_longo_demais_falha_limpo(conn: sqlite3.Connection) -> None:
+    padrao = "%" + "a" * 100  # 101 caracteres
+    with pytest.raises(ErroDeConsulta, match="pattern too complex"):
+        executar_consulta(conn, f"SELECT count(*) FROM pedidos WHERE bairro LIKE '{padrao}'")
+    assert executar_consulta(
+        conn, f"SELECT count(*) FROM pedidos WHERE bairro LIKE '{padrao[:100]}'"
+    ).linhas == ((0,),)
+
+
+def test_aceita_funcoes_de_janela_e_time(conn: sqlite3.Connection) -> None:
+    sql = """
+        SELECT bairro,
+               row_number() OVER (ORDER BY count(*) DESC) AS posicao,
+               rank() OVER w, dense_rank() OVER w,
+               lag(count(*)) OVER w, lead(count(*)) OVER w,
+               min(time(data_hora))
+        FROM pedidos
+        GROUP BY bairro
+        WINDOW w AS (ORDER BY count(*) DESC)
+        ORDER BY posicao
+    """
+    resultado = executar_consulta(conn, sql)
+    assert [linha[1] for linha in resultado.linhas] == list(range(1, 9))
+    assert resultado.linhas[0][4] is None  # lag da primeira linha
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
         # Nome de CTE que coincide com tabela interna ou com tabela real fora da lista.
         (
             "WITH RECURSIVE sqlite_master(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM sqlite_master "
@@ -300,6 +344,20 @@ def test_rejeita_funcao_fora_da_lista(conn: sqlite3.Connection, sql: str) -> Non
         # CTE declarada só dentro de string não conta.
         "SELECT 'json_each AS (' FROM pedidos, json_each('[1]') LIMIT 1",
         "SELECT count(*) FROM json_each('[1, 2]')",
+        # `WINDOW nome AS (` não declara CTE.
+        "SELECT count(*) FROM json_each('[1,2,3]') WINDOW json_each AS ()",
+        "SELECT count(*) FROM json_tree('[1,[2]]') WINDOW json_tree AS ()",
+        "SELECT count(*) FROM json_each('[1]') WINDOW w AS (), json_each AS ()",
+        "SELECT count(*) FROM segredo WINDOW segredo AS ()",
+        # CTE com nome de módulo (função de tabela) em outro escopo.
+        (
+            "SELECT (WITH json_each AS (SELECT 1) SELECT 1), "
+            "(SELECT count(*) FROM json_each('[1,2,3]'))"
+        ),
+        (
+            "SELECT (WITH json_tree AS MATERIALIZED (SELECT 1) SELECT count(*) FROM json_tree), "
+            "(SELECT count(*) FROM json_tree('[1,[2]]'))"
+        ),
     ],
 )
 def test_leitura_sem_coluna_falha_fechada_para_o_que_nao_e_cte(
@@ -395,6 +453,59 @@ def test_tempo_maximo(conn: sqlite3.Connection, sql: str) -> None:
     assert executar_consulta(conn, "SELECT count(*) FROM pedidos", timeout_s=0.2).linhas == (
         (8000,),
     )
+
+
+def _texto(niveis: int, letra: str = "a") -> str:
+    """Expressão SQL que vale `letra` repetida 3**niveis vezes (replace aninhado)."""
+    expressao = f"'{letra}'"
+    for _ in range(niveis):
+        expressao = f"replace({expressao}, '{letra}', '{letra * 3}')"
+    return expressao
+
+
+@pytest.mark.parametrize(
+    ("sql", "esperado"),
+    [
+        # trim(X, Y) compara cada caractere de X com cada um de Y dentro de um só passo da VM:
+        # o teto de tamanho barra antes de começar.
+        (f"SELECT length(trim({_texto(11)}, {_texto(10, 'b')} || 'a'))", "too big"),
+        (f"SELECT instr({_texto(12)}, {_texto(11)} || 'b')", "too big"),
+        (
+            (
+                f"SELECT max(length(trim({_texto(10)} || id, {_texto(9, 'b')} || 'a'))) "
+                "FROM (SELECT id FROM pedidos LIMIT 20)"
+            ),
+            "too big",
+        ),
+        # Logo abaixo dos tetos, repetido por linha: o tempo corta entre uma linha e outra.
+        (
+            f"SELECT max(length(trim({_texto(8)} || id, {_texto(6, 'b')} || 'a'))) FROM pedidos",
+            "tempo",
+        ),
+        (f"SELECT max(instr({_texto(8)} || id, {_texto(7)} || 'b')) FROM pedidos", "tempo"),
+    ],
+)
+def test_funcao_quadratica_nao_passa_do_tempo(
+    conn: sqlite3.Connection, sql: str, esperado: str
+) -> None:
+    timeout_s = 0.3
+    inicio = time.monotonic()
+    with pytest.raises((SqlRejeitado, ErroDeConsulta)) as erro:
+        executar_consulta(conn, sql, timeout_s=timeout_s)
+    assert time.monotonic() - inicio < 2 * timeout_s
+    if esperado == "tempo":
+        assert isinstance(erro.value, SqlRejeitado)
+        assert erro.value.motivo == "tempo"
+    else:
+        assert isinstance(erro.value, ErroDeConsulta)
+        assert esperado in str(erro.value)
+
+
+def test_caractere_invalido_vira_erro_de_consulta(conn: sqlite3.Connection) -> None:
+    with pytest.raises(ErroDeConsulta):
+        executar_consulta(conn, "SELECT '\ud800'")
+    with pytest.raises(ErroDeConsulta):
+        executar_consulta(conn, "SELECT 1\x00")
 
 
 def test_texto_gigante_numa_so_funcao_e_cortado(conn: sqlite3.Connection) -> None:
