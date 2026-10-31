@@ -54,7 +54,7 @@ A descrição de `executar_sql` sai do teto de linhas em uso (`ferramentas(limit
 
 **`llm.py`.** O único arquivo que importa `openai`. Define a interface `ModeloLLM` (um método,
 `completar`) e o `ClienteOpenAI`, que fala com qualquer endereço compatível com `chat.completions`.
-Toda chamada usa `temperature=0` e `max_tokens=800`. Em erro 429 tenta de novo após 2, 4 e 8 s; outros
+Toda chamada usa `temperature=0` e `max_tokens=800`. Em erro 429 tenta de novo após 2, 4 e 8 s (a avaliação espera 15, 30, 60 e 60 s); outros
 erros do SDK viram `ErroDoProvedor` com mensagem em português e sem a chave. Provedores compatíveis
 variam: o código gera um `id` quando a chamada vem sem ele e guarda os campos extras de cada chamada
 (`ChamadaFerramenta.extra`, por exemplo a `thought_signature` do Gemini 3) para devolvê-los intactos no

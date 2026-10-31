@@ -206,6 +206,11 @@ def test_criar_modelo_com_chave_devolve_cliente():
     assert isinstance(criar_modelo(Configuracao(llm_api_key=CHAVE)), ClienteOpenAI)
 
 
+def test_criar_modelo_aceita_esperas_proprias():
+    cliente = criar_modelo(Configuracao(llm_api_key=CHAVE), esperas_s=(30, 60))
+    assert cliente._esperas_s == (30, 60)
+
+
 def test_400_de_chave_invalida_vira_erro_de_chave_sem_vazar_a_chave():
     # O Gemini responde 400, não 401, a uma chave inválida.
     texto = f"API key not valid. Please pass a valid API key. ({CHAVE})"

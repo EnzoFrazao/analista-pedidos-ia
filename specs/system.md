@@ -84,7 +84,8 @@ Opcionais: `BANCO_PATH`, `RUNS_PATH`, `AVALIACAO_PATH` (só o painel), `LIMITE_S
 
 ## Restrições e lacunas
 
-- Toda chamada ao modelo usa `temperature=0` e `max_tokens=800`; cada tentativa em 429 espera 2, 4 e 8 s.
+- Toda chamada ao modelo usa `temperature=0` e `max_tokens=800`; cada tentativa em 429 espera 2, 4 e 8 s
+  (15, 30, 60 e 60 s na avaliação, `ESPERAS_429_S`).
 - Banco de 91 dias (13 semanas, segunda 2026-06-29 a domingo 2026-09-27); o relatório só aceita semanas
   inteiras dentro desse período.
 - O teto diário é aproximado (ler, somar e gravar não é atômico); falha ao gravar o contador não bloqueia

@@ -43,7 +43,8 @@ gerados pelo modelo. Envio do relatório por mensageria também ficou de fora.
 - Pedido de escrita e instrução escondida nos dados não alteram o banco. `descrever_esquema` lista
   categorias e nunca nomes de itens.
 - Falha do provedor do modelo (limite, chave, rede) vira uma mensagem em português, sem a chave e sem
-  stack trace; em erro 429 o cliente tenta de novo após 2, 4 e 8 s.
+  stack trace; em erro 429 o cliente tenta de novo após 2, 4 e 8 s (a
+  avaliação espera 15, 30, 60 e 60 s, por causa do limite por minuto do plano gratuito).
 - A avaliação roda 25 perguntas de referência (8 agregação simples, 6 filtro e junção, 4 comparação de
   períodos, 3 ambíguas, 2 escrita a recusar, 2 injeção), 3 repetições por padrão, e reporta média e pior
   caso (ADR-0002). Roda num banco gerado de novo em pasta temporária, reprova a pergunta que altera o

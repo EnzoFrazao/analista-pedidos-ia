@@ -168,8 +168,15 @@ def _campos_do_provedor(chamada) -> dict | None:
     return dict(extra) if isinstance(extra, dict) and extra else None
 
 
-def criar_modelo(config: Configuracao) -> ModeloLLM | None:
-    """O cliente real, ou `None` quando não há chave (quem chama decide o que mostrar)."""
+def criar_modelo(
+    config: Configuracao, esperas_s: tuple[float, ...] | None = None
+) -> ModeloLLM | None:
+    """O cliente real, ou `None` quando não há chave (quem chama decide o que mostrar).
+
+    `esperas_s` troca as esperas em 429 (o padrão é curto, para o painel não prender o visitante).
+    """
     if not config.llm_api_key:
         return None
-    return ClienteOpenAI(config)
+    if esperas_s is None:
+        return ClienteOpenAI(config)
+    return ClienteOpenAI(config, esperas_s=esperas_s)

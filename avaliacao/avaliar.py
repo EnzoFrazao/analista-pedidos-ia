@@ -52,6 +52,9 @@ NOME_PARCIAL = "parcial.jsonl"
 CATEGORIA_AMBIGUA = "ambigua"
 _TIMEOUT_REFERENCIA_S = 10.0  # folga: a referência é código nosso e não pode falhar por lentidão
 
+# Esperas em 429 na avaliação: o limite do plano gratuito costuma ser por minuto, e a avaliação
+# pode esperar (o painel não, por isso o padrão do cliente é curto).
+ESPERAS_429_S = (15.0, 30.0, 60.0, 60.0)
 SAIDA_OK = 0
 SAIDA_USO = 2
 SAIDA_PROVEDOR = 3
@@ -636,7 +639,7 @@ def main(
     if not config.llm_api_key:
         print(_AJUDA_SEM_CHAVE)
         return SAIDA_USO
-    modelo = modelo or criar_modelo(config)
+    modelo = modelo or criar_modelo(config, esperas_s=ESPERAS_429_S)
     if modelo is None:  # defensivo: criar_modelo só devolve None sem chave
         print(_AJUDA_SEM_CHAVE)
         return SAIDA_USO
