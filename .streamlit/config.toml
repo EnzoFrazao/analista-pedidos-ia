@@ -1,3 +1,22 @@
 [client]
 # Erro não tratado mostra só uma mensagem genérica no navegador; o detalhe fica no log do servidor.
 showErrorDetails = "none"
+# Sem o menu de desenvolvedor para o visitante (Deploy, Rerun etc.).
+toolbarMode = "minimal"
+
+[theme]
+# Tema claro e neutro, com um azul de destaque e âmbar só para chamar atenção (gráficos e alertas).
+# Contraste do texto sobre o fundo: mais de 15:1 (WCAG AAA).
+base = "light"
+primaryColor = "#1E40AF"
+backgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#EEF2F7"
+textColor = "#0F172A"
+borderColor = "#CBD5E1"
+baseRadius = "0.6rem"
+showWidgetBorder = true
+metricValueFontSize = "1.5rem"
+metricValueFontWeight = 700
+headingFontSizes = ["2.4rem", "1.5rem", "1.2rem"]
+headingFontWeights = [700, 650, 600]
+chartCategoricalColors = ["#1E40AF", "#D97706", "#0F766E", "#7C3AED"]

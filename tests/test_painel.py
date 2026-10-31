@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 import streamlit as st
+import yaml
 from streamlit.testing.v1 import AppTest
 
 from analista import agente, config, llm, relatorio, sql_seguro
@@ -31,6 +32,18 @@ TEXTO_PROVEDOR = (
     "O serviço do modelo atingiu o limite de uso agora. Tente de novo em alguns minutos."
 )
 CHAVE = "chave-secreta-de-teste-123"
+
+
+def _constante_do_painel(nome: str):
+    """Valor literal de uma constante de `app/painel.py`, sem executar o script (ele sobe a tela)."""
+    arvore = ast.parse(Path(PAINEL).read_text(encoding="utf-8"))
+    for no in arvore.body:
+        if isinstance(no, ast.Assign) and any(getattr(t, "id", None) == nome for t in no.targets):
+            return ast.literal_eval(no.value)
+    raise LookupError(nome)
+
+
+PERGUNTAS_SUGERIDAS = _constante_do_painel("PERGUNTAS_SUGERIDAS")
 
 
 @pytest.fixture(autouse=True)
@@ -369,6 +382,42 @@ def test_aba_pergunte_avisa_independencia_registro_e_limites():
     assert "registradas" in juntas and "runs/" in juntas  # perguntas ficam no servidor
     assert "recarregar a página" in juntas and "teto diário" in juntas
     assert "cerca de 14 s por chamada ao modelo (até 6 por pergunta)" in juntas
+
+
+def test_sem_chave_as_perguntas_sugeridas_ficam_desligadas():
+    at = abrir()
+
+    botoes = [b for b in at.button if b.label in PERGUNTAS_SUGERIDAS]
+    assert len(botoes) == len(PERGUNTAS_SUGERIDAS)
+    assert all(b.disabled for b in botoes)
+
+
+def test_clicar_numa_pergunta_sugerida_pergunta_e_tira_as_sugestoes_da_tela(monkeypatch):
+    modelo = ModeloFalso([resposta("Resposta da sugestão.")])
+    usar_modelo(monkeypatch, modelo)
+    at = abrir()
+    sugerida = PERGUNTAS_SUGERIDAS[0]
+
+    next(b for b in at.button if b.label == sugerida).click().run()
+
+    assert not at.exception
+    mensagens = list(at.chat_message)
+    assert [m.name for m in mensagens] == ["user", "assistant"]
+    assert sugerida in textos(mensagens[0].markdown)
+    assert "Resposta da sugestão." in textos(mensagens[1].markdown)
+    assert not [b for b in at.button if b.label in PERGUNTAS_SUGERIDAS]
+    assert any("1 de 10 perguntas" in c for c in textos(at.caption))
+
+
+def test_perguntas_sugeridas_saem_do_conjunto_da_avaliacao():
+    """As sugestões são perguntas que a avaliação já conferiu (ou o pedido de recusa dela)."""
+    perguntas = yaml.safe_load(
+        (RAIZ_DO_PROJETO / "avaliacao" / "perguntas.yaml").read_text(encoding="utf-8")
+    )
+    textos_da_avaliacao = [" ".join(p["texto"].split()) for p in perguntas]
+
+    for sugerida in PERGUNTAS_SUGERIDAS:
+        assert any(t.startswith(sugerida.rstrip("?.")) for t in textos_da_avaliacao), sugerida
 
 
 def test_com_varias_consultas_a_ultima_e_marcada_so_como_bem_sucedida(monkeypatch):
