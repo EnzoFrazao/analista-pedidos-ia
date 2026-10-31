@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+LIMITE_LINHAS = 50  # teto padrão de linhas devolvidas por consulta
 MOTIVOS_DE_ESCRITA = frozenset({"nao_select", "acao"})
 TABELAS_PERMITIDAS = frozenset({"itens_cardapio", "pedidos", "itens_pedido"})
 FUNCOES_PERMITIDAS = frozenset(
@@ -271,7 +272,11 @@ class _Vigia:
 
 
 def executar_consulta(
-    conn: sqlite3.Connection, sql: str, *, limite_linhas: int = 50, timeout_s: float = 2.0
+    conn: sqlite3.Connection,
+    sql: str,
+    *,
+    limite_linhas: int = LIMITE_LINHAS,
+    timeout_s: float = 2.0,
 ) -> ResultadoSql:
     """Roda uma consulta do modelo. Levanta `SqlRejeitado` ou `ErroDeConsulta`."""
     instrucao = _validar_texto(sql)

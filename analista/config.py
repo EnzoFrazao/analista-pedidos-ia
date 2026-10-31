@@ -7,6 +7,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from analista.sql_seguro import LIMITE_LINHAS
+
 RAIZ = Path(__file__).resolve().parents[1]
 
 _URL_PADRAO = "https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -22,7 +24,7 @@ class Configuracao:
     pasta_runs: Path = RAIZ / "runs"
     avaliacao: Path = RAIZ / "avaliacao" / "resultados" / "ultima.json"
     max_passos: int = 6
-    limite_linhas: int = 50
+    limite_linhas: int = LIMITE_LINHAS
     limite_sessao: int = 10
     limite_dia: int = 200
     timeout_sql_s: float = 2.0

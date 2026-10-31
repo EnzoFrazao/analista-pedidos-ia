@@ -7,7 +7,15 @@ from pathlib import Path
 import pytest
 
 from analista.dados import BAIRROS, CANAIS, DEFINICOES, FIM, INICIO
-from analista.ferramentas import FERRAMENTAS, descrever_esquema, despachar
+from analista.ferramentas import (
+    FERRAMENTAS,
+    MAX_BYTES_RESULTADO,
+    MAX_CARACTERES_CELULA,
+    MAX_CARACTERES_COLUNA,
+    MAX_COLUNAS,
+    descrever_esquema,
+    despachar,
+)
 from analista.sql_seguro import abrir_somente_leitura
 
 
@@ -69,7 +77,9 @@ def test_executar_sql_devolve_colunas_linhas_e_truncado(conn, banco_path: Path) 
         "colunas": ["canal", "n"],
         "linhas": resposta["linhas"],
         "truncado": False,
+        "cortes": {},
     }
+    assert "cortes" not in resposta and "aviso" not in resposta  # nada cortado, nada a avisar
 
 
 def test_resultado_acima_do_limite_vem_truncado(conn, banco_path: Path) -> None:
@@ -148,6 +158,7 @@ def test_descrever_esquema_pelo_despacho(conn, banco_path: Path, argumentos: str
         "colunas": [],
         "linhas": [],
         "truncado": False,
+        "cortes": {},
     }
 
 
@@ -193,7 +204,17 @@ def test_ferramentas_no_formato_da_api_de_chat() -> None:
     assert parametros["properties"]["consulta"]["type"] == "string"
     assert parametros["required"] == ["consulta"]
     descricao = por_nome["executar_sql"]["function"]["description"]
-    for trecho in ("SELECT", "WITH", "50", "truncado", "itens_pedido", "LIKE", "glob", "printf"):
+    for trecho in (
+        "SELECT",
+        "WITH",
+        "50",
+        "truncado",
+        "cortes",
+        "itens_pedido",
+        "LIKE",
+        "glob",
+        "printf",
+    ):
         assert trecho in descricao
     assert "descrever_esquema" in descricao
 
@@ -215,3 +236,98 @@ def test_infinito_vira_null_no_modelo_e_na_auditoria(conn, banco_path: Path, val
     assert "Infinity" not in texto and "NaN" not in texto
     assert json.loads(texto)["linhas"] == [[None]]
     assert auditoria["linhas"] == [[None]]
+
+
+# --- teto de tamanho da saída -----------------------------------------------------------------
+
+# Cada replace multiplica por 9: 'x' vira 9**4 = 6561 caracteres numa célula, sem tabela grande.
+_TEXTO_LONGO = (
+    "replace(replace(replace(replace('x','x','xxxxxxxxx'),'x','xxxxxxxxx'),"
+    "'x','xxxxxxxxx'),'x','xxxxxxxxx')"
+)
+
+
+def _amplificadora(n_colunas: int) -> str:
+    return (
+        f"WITH t(r) AS (SELECT {_TEXTO_LONGO}) SELECT {','.join(['r'] * n_colunas)} FROM t, pedidos"
+    )
+
+
+def test_consulta_que_amplifica_a_saida_fica_dentro_do_teto(conn, banco_path: Path) -> None:
+    sql = _amplificadora(300)
+    assert len(sql) < 1000  # consulta curta, que um modelo escreve dentro de max_tokens
+
+    texto, auditoria = despachar(
+        conn, banco_path, "executar_sql", _sql(sql), limite_linhas=50, timeout_s=2.0
+    )
+
+    assert len(texto.encode("utf-8")) <= MAX_BYTES_RESULTADO
+    resposta = json.loads(texto)
+    assert len(resposta["colunas"]) == MAX_COLUNAS
+    assert resposta["truncado"] is True  # linhas tiradas do fim para caber
+    assert 0 < len(resposta["linhas"]) < 50
+    assert all(len(linha) == MAX_COLUNAS for linha in resposta["linhas"])
+    assert resposta["cortes"]["colunas_omitidas"] == 300 - MAX_COLUNAS
+    assert resposta["cortes"]["celulas_encurtadas"] > 0
+    assert resposta["cortes"]["linhas_omitidas"] == 50 - len(resposta["linhas"])
+    assert resposta["aviso"]
+    # A auditoria (rastro e avaliação) guarda o mesmo corte que o modelo viu.
+    assert auditoria["colunas"] == resposta["colunas"]
+    assert auditoria["linhas"] == resposta["linhas"]
+    assert auditoria["truncado"] is True and auditoria["cortes"] == resposta["cortes"]
+    assert auditoria["n_linhas"] == len(resposta["linhas"])
+    assert len(json.dumps(auditoria, ensure_ascii=False).encode("utf-8")) <= 2 * MAX_BYTES_RESULTADO
+
+
+def test_celula_longa_e_encurtada_com_marcador_visivel(conn, banco_path: Path) -> None:
+    sql = (
+        "SELECT replace(replace(replace('x','x','xxxxxxxxx'),'x','xxxxxxxxx'),'x','xxxxxxxxx') AS v"
+    )
+
+    resposta, auditoria = _chamar(conn, banco_path, "executar_sql", _sql(sql))
+
+    ((celula,),) = resposta["linhas"]
+    assert celula == "x" * MAX_CARACTERES_CELULA + f"…[+{729 - MAX_CARACTERES_CELULA} caracteres]"
+    assert resposta["truncado"] is False  # nenhuma linha faltou
+    assert resposta["cortes"] == {"celulas_encurtadas": 1}
+    assert auditoria["linhas"] == [[celula]] and auditoria["cortes"] == {"celulas_encurtadas": 1}
+
+
+def test_celula_de_ate_200_caracteres_nao_muda(conn, banco_path: Path) -> None:
+    sql = f"SELECT substr({_TEXTO_LONGO}, 1, {MAX_CARACTERES_CELULA}) AS v"
+
+    resposta, auditoria = _chamar(conn, banco_path, "executar_sql", _sql(sql))
+
+    assert resposta["linhas"] == [["x" * MAX_CARACTERES_CELULA]]
+    assert "cortes" not in resposta and auditoria["cortes"] == {}
+
+
+def test_colunas_alem_do_teto_sao_omitidas_e_avisadas(conn, banco_path: Path) -> None:
+    sql = "SELECT " + ", ".join(f"{n} AS c{n}" for n in range(MAX_COLUNAS + 5))
+
+    resposta, auditoria = _chamar(conn, banco_path, "executar_sql", _sql(sql))
+
+    assert resposta["colunas"] == [f"c{n}" for n in range(MAX_COLUNAS)]
+    assert resposta["linhas"] == [list(range(MAX_COLUNAS))]
+    assert resposta["cortes"] == {"colunas_omitidas": 5}
+    assert auditoria["colunas"] == resposta["colunas"] and auditoria["cortes"] == resposta["cortes"]
+
+
+def test_nome_de_coluna_longo_e_encurtado(conn, banco_path: Path) -> None:
+    apelido = "a" * (MAX_CARACTERES_COLUNA + 10)
+
+    resposta, auditoria = _chamar(
+        conn, banco_path, "executar_sql", _sql(f'SELECT 1 AS "{apelido}"')
+    )
+
+    assert resposta["colunas"] == ["a" * MAX_CARACTERES_COLUNA + "…[+10 caracteres]"]
+    assert resposta["cortes"] == {"nomes_de_coluna_encurtados": 1}
+    assert auditoria["colunas"] == resposta["colunas"]
+
+
+def test_pior_caso_de_colunas_ainda_cabe_no_teto_sem_linhas() -> None:
+    """Teto de colunas x teto do nome (cada caractere de controle vira 6 bytes no JSON) deixa
+    espaço para linhas: o JSON nunca passa do teto nem quando nenhuma linha cabe."""
+    nome = "\x01" * MAX_CARACTERES_COLUNA + "…[+999999 caracteres]"
+    colunas = json.dumps([nome] * MAX_COLUNAS, ensure_ascii=False)
+    assert len(colunas.encode("utf-8")) < MAX_BYTES_RESULTADO // 2

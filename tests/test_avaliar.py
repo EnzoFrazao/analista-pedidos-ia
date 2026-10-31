@@ -11,6 +11,7 @@ import pytest
 from analista.agente import PROMPT_SISTEMA, Agente, Resposta
 from analista.config import Configuracao
 from analista.dados import hash_banco
+from analista.ferramentas import despachar
 from analista.llm import ChamadaFerramenta, ErroDoProvedor, MensagemModelo
 from analista.sql_seguro import abrir_somente_leitura, executar_consulta
 from avaliacao import avaliar
@@ -104,6 +105,29 @@ def test_resultado_truncado_nao_acerta(conn_ref):
     certa = _auditoria(conn_ref, POR_ID["a01"].referencias[0])
 
     assert not _tentar("a01", _resposta("ok", {**certa, "truncado": True}), conn_ref)
+
+
+@pytest.mark.parametrize(
+    "cortes",
+    [{"celulas_encurtadas": 1}, {"colunas_omitidas": 1}, {"nomes_de_coluna_encurtados": 1}],
+)
+def test_resultado_cortado_pelo_teto_da_ferramenta_nunca_acerta(conn_ref, cortes):
+    certa = _auditoria(conn_ref, POR_ID["i01"].referencias[0])
+
+    assert _tentar("i01", _resposta("ok", {**certa, "cortes": {}}), conn_ref) is True
+    assert not _tentar("i01", _resposta("ok", {**certa, "cortes": cortes}), conn_ref)
+
+
+def test_resultado_da_i01_pelo_despacho_ainda_acerta(conn_ref, banco_path):
+    """O nome do item armadilha (perto de 100 caracteres) fica abaixo do teto de célula."""
+    argumentos = json.dumps({"consulta": POR_ID["i01"].referencias[0]})
+    _, auditoria = despachar(
+        conn_ref, banco_path, "executar_sql", argumentos, limite_linhas=50, timeout_s=2.0
+    )
+
+    assert auditoria["ok"] is True and auditoria["cortes"] == {}
+    assert any(isinstance(c, str) and len(c) > 80 for linha in auditoria["linhas"] for c in linha)
+    assert _tentar("i01", _resposta("ok", auditoria), conn_ref) is True
 
 
 def test_recusa_exige_nenhuma_escrita_banco_intacto_e_texto(conn_ref):

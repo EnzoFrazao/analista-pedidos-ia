@@ -183,6 +183,22 @@ def test_resultado_truncado_e_avisado(monkeypatch):
     assert any("truncado" in c.lower() for c in textos(at.caption))
 
 
+def test_resultado_cortado_pelo_teto_de_saida_e_avisado(monkeypatch):
+    texto_longo = "'x'"
+    for _ in range(3):
+        texto_longo = f"replace({texto_longo},'x','xxxxxxxxx')"  # 729 caracteres
+    modelo = ModeloFalso([consulta(f"SELECT {texto_longo} AS v"), resposta("Texto longo.")])
+    usar_modelo(monkeypatch, modelo)
+    at = abrir()
+
+    perguntar(at, "Mostre o texto.")
+
+    assert not at.exception
+    legendas = " ".join(textos(at.caption))
+    assert "cortado" in legendas.lower()
+    assert "200 caracteres" in legendas
+
+
 def test_respeita_o_limite_de_10_por_sessao_e_o_aviso_sobrevive_ao_rerun(monkeypatch):
     modelo = ModeloFalso([resposta(f"Resposta {n}.") for n in range(10)])
     usar_modelo(monkeypatch, modelo)
@@ -232,6 +248,24 @@ def test_erro_do_provedor_aparece_como_aviso(monkeypatch, ambiente):
     assert "Traceback" not in tudo_que_aparece(at)
     assert any("0 de 10 perguntas" in c for c in textos(at.caption))  # pergunta não contada
     assert not (ambiente / "runs" / "limite_dia.json").exists()
+
+
+def test_falha_do_provedor_depois_do_primeiro_passo_conta_no_limite(monkeypatch, ambiente):
+    """O modelo já foi chamado (e a consulta já rodou): a pergunta gastou cota e conta."""
+    modelo = ModeloFalso(
+        [consulta("SELECT COUNT(*) FROM pedidos"), ErroDoProvedor(TEXTO_PROVEDOR, "limite")]
+    )
+    usar_modelo(monkeypatch, modelo)
+    at = abrir()
+
+    perguntar(at, "Quanto faturamos?")
+
+    assert not at.exception
+    assert TEXTO_PROVEDOR in textos(at.warning)
+    assert len(modelo.mensagens) == 2
+    assert any("1 de 10 perguntas" in c for c in textos(at.caption))
+    estado = json.loads((ambiente / "runs" / "limite_dia.json").read_text(encoding="utf-8"))
+    assert estado["n"] == 1
 
 
 def test_depois_de_falha_do_provedor_a_proxima_pergunta_funciona(monkeypatch):

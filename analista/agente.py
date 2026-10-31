@@ -8,7 +8,7 @@ import hashlib
 from dataclasses import dataclass
 
 from analista.config import Configuracao
-from analista.ferramentas import FERRAMENTAS, despachar
+from analista.ferramentas import despachar, ferramentas
 from analista.llm import ErroDoProvedor, MensagemModelo, ModeloLLM
 from analista.rastro import Rastro
 from analista.sql_seguro import abrir_somente_leitura
@@ -97,12 +97,13 @@ class Agente:
         ]
         consultas: list[dict] = []
         passos = 0
+        esquema_ferramentas = ferramentas(self._config.limite_linhas)
 
         conn = abrir_somente_leitura(self._config.banco)
         try:
             while passos < self._config.max_passos:
                 try:
-                    mensagem = self._modelo.completar(mensagens, FERRAMENTAS)
+                    mensagem = self._modelo.completar(mensagens, esquema_ferramentas)
                 except ErroDoProvedor as erro:
                     self._registrar("erro_provedor", mensagem=str(erro), tipo=erro.tipo)
                     return self._concluir(

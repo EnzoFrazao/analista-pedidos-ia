@@ -5,6 +5,9 @@ ferramenta e um dicionário de auditoria para o rastro e para a avaliação. Tud
 pode errar (JSON quebrado, argumento faltando, SQL recusado, erro de sintaxe, ferramenta que
 não existe) vira um JSON `{"erro": ..., "motivo": ...}` para ele corrigir; o resto é bug nosso
 e sobe como exceção.
+
+Os dois resultados passam pelos mesmos tetos de saída (célula, colunas e bytes, constantes
+`MAX_*` abaixo): o que foi cortado aparece em `cortes`, e linhas tiradas marcam `truncado`.
 """
 
 import json
@@ -14,6 +17,7 @@ from pathlib import Path
 
 from analista.dados import DEFINICOES, PRAZO_MIN
 from analista.sql_seguro import (
+    LIMITE_LINHAS,
     TABELAS_PERMITIDAS,
     ErroDeConsulta,
     ResultadoSql,
@@ -22,46 +26,72 @@ from analista.sql_seguro import (
     executar_consulta,
 )
 
-_DESCRICAO_EXECUTAR_SQL = (
-    "Executa uma consulta SQL de leitura (SQLite) sobre os pedidos e devolve colunas, linhas "
-    "e `truncado`. Só SELECT ou WITH, uma instrução por chamada; escrita é recusada. Devolve "
-    "no máximo 50 linhas e marca `truncado: true` quando havia mais (agregue em vez de listar). "
-    "Tabelas permitidas: itens_cardapio, pedidos, itens_pedido. LIKE é permitido; glob e printf "
-    "não. Agregados de texto muito longos (group_concat enorme) falham. Chame "
-    "descrever_esquema primeiro, para saber colunas, valores e definições de métrica."
+# Tetos da saída de `executar_sql`, aplicados no `despachar` (um lugar só): valem para o JSON
+# que volta ao modelo e para a auditoria que vai ao rastro e à avaliação. Sem eles, uma
+# consulta curta (replace aninhado, muitas colunas, junção) gera dezenas de MB por chamada.
+MAX_CARACTERES_CELULA = 200
+MAX_CARACTERES_COLUNA = 64  # nome de coluna; 30 x 64 deixa espaço para linhas no teto em bytes
+MAX_COLUNAS = 30
+MAX_BYTES_RESULTADO = 32 * 1024  # JSON inteiro em UTF-8
+
+_AVISO_DE_CORTE = (
+    "O resultado foi cortado para caber no limite da ferramenta (veja `cortes`): textos longos "
+    "terminam em '…[+N caracteres]', colunas além do limite e linhas do fim foram omitidas. "
+    "Não trate o resultado como completo; agregue, selecione menos colunas ou use substr()."
 )
 
-FERRAMENTAS: list[dict] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "descrever_esquema",
-            "description": (
-                "Descreve as tabelas, colunas e tipos, os valores possíveis de bairro, canal, "
-                "status e categoria, o período dos dados e as definições de métrica. Sem "
-                "parâmetros."
-            ),
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "executar_sql",
-            "description": _DESCRICAO_EXECUTAR_SQL,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "consulta": {
-                        "type": "string",
-                        "description": "A consulta SQL (SELECT ou WITH).",
-                    }
-                },
-                "required": ["consulta"],
+
+def _descricao_executar_sql(limite_linhas: int) -> str:
+    return (
+        "Executa uma consulta SQL de leitura (SQLite) sobre os pedidos e devolve colunas, "
+        "linhas e `truncado`. Só SELECT ou WITH, uma instrução por chamada; escrita é recusada. "
+        f"Devolve no máximo {limite_linhas} linhas e marca `truncado: true` quando havia mais "
+        "(agregue em vez de listar). Saída limitada: até "
+        f"{MAX_COLUNAS} colunas, textos de até {MAX_CARACTERES_CELULA} caracteres e "
+        f"{MAX_BYTES_RESULTADO // 1024} KB no total; o que passar disso é cortado e listado em "
+        "`cortes`. Tabelas permitidas: itens_cardapio, pedidos, itens_pedido. LIKE é "
+        "permitido; glob e printf não. Agregados de texto muito longos (group_concat enorme) "
+        "falham. Chame descrever_esquema primeiro, para saber colunas, valores e definições de "
+        "métrica."
+    )
+
+
+def ferramentas(limite_linhas: int = LIMITE_LINHAS) -> list[dict]:
+    """O esquema das ferramentas no formato da API de chat, com o teto de linhas em uso."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "descrever_esquema",
+                "description": (
+                    "Descreve as tabelas, colunas e tipos, os valores possíveis de bairro, canal, "
+                    "status e categoria, o período dos dados e as definições de métrica. Sem "
+                    "parâmetros."
+                ),
+                "parameters": {"type": "object", "properties": {}},
             },
         },
-    },
-]
+        {
+            "type": "function",
+            "function": {
+                "name": "executar_sql",
+                "description": _descricao_executar_sql(limite_linhas),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "consulta": {
+                            "type": "string",
+                            "description": "A consulta SQL (SELECT ou WITH).",
+                        }
+                    },
+                    "required": ["consulta"],
+                },
+            },
+        },
+    ]
+
+
+FERRAMENTAS: list[dict] = ferramentas()
 
 _MENSAGENS_DE_ERRO = {
     "vazio": "A consulta está vazia.",
@@ -119,7 +149,7 @@ def descrever_esquema(caminho: Path) -> str:
     return "\n".join(partes)
 
 
-def _json(conteudo: dict) -> str:
+def _json(conteudo: object) -> str:
     # allow_nan=False: qualquer NaN/Infinity que escape da normalização estoura nos testes.
     return json.dumps(conteudo, ensure_ascii=False, allow_nan=False)
 
@@ -133,6 +163,60 @@ def _celula(valor: object) -> object:
     return valor
 
 
+def _encurtar(texto: str, maximo: int) -> tuple[str, bool]:
+    """O texto até `maximo` caracteres, com um marcador visível do que faltou."""
+    if len(texto) <= maximo:
+        return texto, False
+    return f"{texto[:maximo]}…[+{len(texto) - maximo} caracteres]", True
+
+
+def _limitar(resultado: ResultadoSql) -> tuple[list[str], list[list], bool, dict[str, int]]:
+    """Aplica os tetos de saída: (colunas, linhas, truncado, cortes).
+
+    `cortes` conta o que foi tirado (só as chaves com valor positivo); linhas tiradas para
+    caber em `MAX_BYTES_RESULTADO` também marcam `truncado`, porque faltam linhas.
+    """
+    cortes: dict[str, int] = {}
+
+    def contar(chave: str, n: int = 1) -> None:
+        if n > 0:
+            cortes[chave] = cortes.get(chave, 0) + n
+
+    contar("colunas_omitidas", len(resultado.colunas) - MAX_COLUNAS)
+    colunas = []
+    for nome in resultado.colunas[:MAX_COLUNAS]:
+        nome, cortado = _encurtar(str(nome), MAX_CARACTERES_COLUNA)
+        colunas.append(nome)
+        contar("nomes_de_coluna_encurtados", int(cortado))
+
+    linhas = []
+    for linha in resultado.linhas:
+        nova = []
+        for valor in linha[:MAX_COLUNAS]:
+            valor = _celula(valor)
+            if isinstance(valor, str):
+                valor, cortado = _encurtar(valor, MAX_CARACTERES_CELULA)
+                contar("celulas_encurtadas", int(cortado))
+            nova.append(valor)
+        linhas.append(nova)
+
+    # Reserva para o resto do JSON (colunas, chaves, `cortes` e `aviso`); as linhas entram em
+    # ordem enquanto couberem. A conferência final no `despachar` garante o teto de qualquer jeito.
+    orcamento = MAX_BYTES_RESULTADO - _tamanho(colunas) - 1024
+    cabem = 0
+    for linha in linhas:
+        orcamento -= _tamanho(linha) + 2
+        if orcamento < 0:
+            break
+        cabem += 1
+    contar("linhas_omitidas", len(linhas) - cabem)
+    return colunas, linhas[:cabem], resultado.truncado or cabem < len(linhas), cortes
+
+
+def _tamanho(valor: object) -> int:
+    return len(_json(valor).encode("utf-8"))
+
+
 def _auditoria(
     *,
     sql: str | None = None,
@@ -140,8 +224,7 @@ def _auditoria(
     motivo: str | None = None,
     resultado: ResultadoSql | None = None,
 ) -> dict:
-    colunas = list(resultado.colunas) if resultado else []
-    linhas = [[_celula(v) for v in linha] for linha in resultado.linhas] if resultado else []
+    colunas, linhas, truncado, cortes = _limitar(resultado) if resultado else ([], [], False, {})
     return {
         "sql": sql,
         "ok": ok,
@@ -149,7 +232,8 @@ def _auditoria(
         "n_linhas": len(linhas),
         "colunas": colunas,
         "linhas": linhas,
-        "truncado": resultado.truncado if resultado else False,
+        "truncado": truncado,
+        "cortes": cortes,
     }
 
 
@@ -189,7 +273,8 @@ def despachar(
     """Atende uma chamada de ferramenta do modelo: (JSON para o modelo, dicionário de auditoria).
 
     As `linhas` da auditoria são listas (e já normalizadas: blob vira texto, não finito vira
-    null); quem reconstrói um `ResultadoSql` a partir delas deve converter cada linha em tupla.
+    null, texto longo encurtado com marcador); quem reconstrói um `ResultadoSql` a partir delas
+    deve converter cada linha em tupla e tratar `cortes` não vazio como resultado incompleto.
     """
     if nome not in ("descrever_esquema", "executar_sql"):
         return _erro(
@@ -212,11 +297,25 @@ def despachar(
     except ErroDeConsulta as erro:
         return _erro("erro_de_consulta", f"Erro do SQLite: {erro}", sql=sql)
     auditoria = _auditoria(sql=sql, ok=True, resultado=resultado)
-    texto = _json(
-        {
-            "colunas": auditoria["colunas"],
-            "linhas": auditoria["linhas"],
-            "truncado": resultado.truncado,
-        }
-    )
+    texto = _texto_do_resultado(auditoria)
+    while len(texto.encode("utf-8")) > MAX_BYTES_RESULTADO and auditoria["linhas"]:
+        # Defesa: a estimativa de `_limitar` já deixa folga, mas o teto é garantido aqui.
+        auditoria["linhas"].pop()
+        auditoria["n_linhas"] -= 1
+        auditoria["truncado"] = True
+        auditoria["cortes"]["linhas_omitidas"] = auditoria["cortes"].get("linhas_omitidas", 0) + 1
+        texto = _texto_do_resultado(auditoria)
     return texto, auditoria
+
+
+def _texto_do_resultado(auditoria: dict) -> str:
+    """O JSON que o modelo recebe; `cortes` e `aviso` só aparecem quando algo foi cortado."""
+    conteudo = {
+        "colunas": auditoria["colunas"],
+        "linhas": auditoria["linhas"],
+        "truncado": auditoria["truncado"],
+    }
+    if auditoria["cortes"]:
+        conteudo["cortes"] = auditoria["cortes"]
+        conteudo["aviso"] = _AVISO_DE_CORTE
+    return _json(conteudo)

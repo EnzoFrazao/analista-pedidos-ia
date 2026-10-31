@@ -10,7 +10,7 @@ import pytest
 from analista import agente
 from analista.agente import PROMPT_SISTEMA, Agente, Resposta, mensagem_do_assistente
 from analista.config import Configuracao
-from analista.ferramentas import FERRAMENTAS
+from analista.ferramentas import FERRAMENTAS, MAX_BYTES_RESULTADO
 from analista.llm import ChamadaFerramenta, ErroDoProvedor, MensagemModelo
 from analista.rastro import Rastro
 from tests.fakes import ModeloFalso
@@ -357,3 +357,35 @@ def test_falha_ao_gravar_o_rastro_nao_derruba_a_resposta(config: Configuracao, t
 
     assert resposta.texto == "Respondi mesmo assim."
     assert len(resposta.consultas) == 1
+
+
+def test_consulta_que_amplifica_a_saida_nao_estoura_mensagem_nem_rastro(
+    config: Configuracao, tmp_path: Path
+):
+    """Uma consulta curta que geraria ~98 MB (300 colunas de 6561 caracteres x 50 linhas)."""
+    texto_longo = "'x'"
+    for _ in range(4):
+        texto_longo = f"replace({texto_longo},'x','xxxxxxxxx')"
+    consulta = f"WITH t(r) AS (SELECT {texto_longo}) SELECT {','.join(['r'] * 300)} FROM t, pedidos"
+    modelo = ModeloFalso([_pede(_sql("1", consulta)), _responde("Pronto.")])
+
+    resposta = Agente(modelo, config, Rastro(tmp_path / "runs")).perguntar("Mostre tudo.")
+
+    (mensagem_tool,) = _tools(modelo.mensagens[1])
+    assert len(mensagem_tool["content"].encode("utf-8")) <= MAX_BYTES_RESULTADO
+    assert json.loads(mensagem_tool["content"])["cortes"]
+    (arquivo,) = (tmp_path / "runs").glob("*.jsonl")
+    linhas = arquivo.read_text(encoding="utf-8").splitlines()
+    assert max(len(linha.encode("utf-8")) for linha in linhas) <= 2 * MAX_BYTES_RESULTADO
+    assert resposta.consultas[0]["truncado"] is True
+
+
+def test_descricao_da_ferramenta_traz_o_teto_de_linhas_em_uso(banco_path: Path):
+    modelo = ModeloFalso([_responde("Oi.")])
+
+    Agente(modelo, Configuracao(banco=banco_path, limite_linhas=7)).perguntar("Oi")
+
+    (enviadas,) = modelo.ferramentas
+    executar = next(f for f in enviadas if f["function"]["name"] == "executar_sql")
+    assert "no máximo 7 linhas" in executar["function"]["description"]
+    assert "50" not in executar["function"]["description"]

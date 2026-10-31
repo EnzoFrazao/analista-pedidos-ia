@@ -28,6 +28,7 @@ from analista import llm
 from analista.agente import MAX_CARACTERES_PERGUNTA, Agente
 from analista.config import Configuracao, carregar_configuracao
 from analista.dados import FIM, INICIO, garantir_banco
+from analista.ferramentas import MAX_BYTES_RESULTADO, MAX_CARACTERES_CELULA, MAX_COLUNAS
 from analista.formatacao import (
     data_br,
     dinheiro,
@@ -240,8 +241,14 @@ def _mostrar_resposta(item: dict, limite_linhas: int) -> None:
             st.code(consulta["sql"], language="sql")
             if consulta["truncado"]:
                 st.caption(
-                    f"Resultado truncado: a consulta devolveu mais de {limite_linhas} linhas e "
-                    "o agente viu só as primeiras."
+                    "Resultado truncado: o agente viu só as primeiras linhas (o teto é de "
+                    f"{limite_linhas} linhas e {MAX_BYTES_RESULTADO // 1024} KB por consulta)."
+                )
+            if consulta["cortado"]:
+                st.caption(
+                    "Resultado cortado: textos com mais de "
+                    f"{MAX_CARACTERES_CELULA} caracteres foram encurtados ou colunas além de "
+                    f"{MAX_COLUNAS} ficaram de fora do que o agente viu."
                 )
 
 
@@ -249,7 +256,13 @@ def _item_da_resposta(resposta) -> dict:
     if resposta.falha_provedor:
         return {"tipo": "aviso", "texto": resposta.texto, "consultas": []}
     consultas = [
-        {"sql": c["sql"], "truncado": bool(c.get("truncado"))}
+        {
+            "sql": c["sql"],
+            "truncado": bool(c.get("truncado")),
+            "cortado": bool(
+                {"celulas_encurtadas", "colunas_omitidas"} & set(c.get("cortes") or {})
+            ),
+        }
         for c in resposta.consultas
         if c.get("ok") and c.get("sql")
     ]
@@ -257,13 +270,18 @@ def _item_da_resposta(resposta) -> dict:
 
 
 def _perguntar(pergunta: str, modelo, limite: LimiteDeUso, config: Configuracao) -> dict:
-    """Roda o agente (conexão nova dentro dele). Só pergunta respondida entra na contagem."""
+    """Roda o agente (conexão nova dentro dele).
+
+    Conta no limite toda pergunta em que o modelo respondeu pelo menos um passo, mesmo que o
+    provedor caia depois: ela já gastou cota e rodou consultas. Só a falha antes do primeiro
+    passo (`passos == 0`) não conta.
+    """
     try:
         resposta = Agente(modelo, config, Rastro(config.pasta_runs)).perguntar(pergunta)
     except Exception:
         log.exception("falha inesperada ao responder")
         return {"tipo": "erro", "texto": TEXTO_FALHA_INESPERADA, "consultas": []}
-    if not resposta.falha_provedor:
+    if resposta.passos > 0:
         limite.registrar()
         st.session_state["feitas"] = _feitas() + 1
     return _item_da_resposta(resposta)

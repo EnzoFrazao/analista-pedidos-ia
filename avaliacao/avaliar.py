@@ -84,13 +84,17 @@ class AvaliacaoInterrompida(Exception):
 
 
 def _ultimo_resultado(resposta: Resposta) -> ResultadoSql | None:
-    """Resultado da última consulta bem-sucedida (as que falharam não contam)."""
+    """Resultado da última consulta bem-sucedida (as que falharam não contam).
+
+    Um resultado cortado pelos tetos de saída da ferramenta (`cortes`: célula encurtada, coluna
+    omitida) volta como truncado: o comparador nunca o dá por igual à referência.
+    """
     for auditoria in reversed(resposta.consultas):
         if auditoria.get("ok") and auditoria.get("sql") is not None:
             return ResultadoSql(
                 tuple(auditoria["colunas"]),
                 tuple(tuple(linha) for linha in auditoria["linhas"]),
-                bool(auditoria["truncado"]),
+                bool(auditoria["truncado"]) or bool(auditoria.get("cortes")),
             )
     return None
 
