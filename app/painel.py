@@ -2,10 +2,10 @@
 
 Este arquivo só monta a interface; toda regra, consulta e formatação está em `analista/` e
 `avaliacao/`. Rode com `streamlit run app/painel.py` a partir da raiz do projeto (é lá que o
-Streamlit lê `.streamlit/config.toml`). O pacote `analista` precisa estar instalado em modo
-editável (`pip install -e .[painel]`, que é o que `requirements.txt` faz), porque o Streamlit
-põe no `sys.path` a pasta do script e não a raiz, e porque `RAIZ` (data/, runs/, .env) só
-aponta para o repositório numa instalação editável.
+Streamlit lê `.streamlit/config.toml`). Não depende de instalar o projeto: o Streamlit põe no
+`sys.path` só a pasta do script (`app/`), então o painel põe a raiz do repositório na frente
+antes de importar `analista` e `avaliacao` (ADR-0005). Assim o código e `RAIZ` (data/, runs/,
+.env) vêm sempre deste repositório, também no deploy que só roda `pip install -r requirements.txt`.
 
 Decisões que valem para o arquivo todo:
 - A conexão SQLite nunca fica em cache: cada renderização e cada pergunta abrem a sua e fecham
@@ -20,9 +20,16 @@ Decisões que valem para o arquivo todo:
 import json
 import logging
 import sqlite3
+import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 import streamlit as st
+
+# Antes dos imports do projeto: sem isto, `analista` só seria encontrado com instalação editável.
+_RAIZ_DO_REPOSITORIO = str(Path(__file__).resolve().parents[1])
+if sys.path[:1] != [_RAIZ_DO_REPOSITORIO]:
+    sys.path.insert(0, _RAIZ_DO_REPOSITORIO)
 
 from analista import llm
 from analista.agente import MAX_CARACTERES_PERGUNTA, Agente

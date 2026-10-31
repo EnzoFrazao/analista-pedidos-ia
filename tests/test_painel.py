@@ -5,6 +5,7 @@ por variável de ambiente e desliga a leitura do `.env`, para a chave real da m�
 os testes nunca entrar.
 """
 
+import ast
 import json
 import sqlite3
 import tomllib
@@ -127,10 +128,39 @@ def test_streamlit_esconde_detalhes_de_erro_do_navegador():
     assert dados["client"]["showErrorDetails"] == "none"
 
 
-def test_requirements_instala_o_projeto_em_modo_editavel():
-    linhas = (RAIZ_DO_PROJETO / "requirements.txt").read_text(encoding="utf-8").split()
+def test_requirements_lista_as_dependencias_de_execucao_com_as_faixas_do_pyproject():
+    """O deploy instala só requirements.txt (sem instalação editável): as faixas têm de ser as
+    mesmas do pyproject (dependências + extra painel), sem o extra dev."""
+    projeto = tomllib.loads((RAIZ_DO_PROJETO / "pyproject.toml").read_text(encoding="utf-8"))
+    esperadas = [
+        *projeto["project"]["dependencies"],
+        *projeto["project"]["optional-dependencies"]["painel"],
+    ]
+    texto = (RAIZ_DO_PROJETO / "requirements.txt").read_text(encoding="utf-8")
+    linhas = [
+        linha.strip()
+        for linha in texto.splitlines()
+        if linha.strip() and not linha.lstrip().startswith("#")
+    ]
 
-    assert linhas == ["-e", ".[painel]"] or linhas == ["-e .[painel]"]
+    assert sorted(linhas) == sorted(esperadas)
+    assert not any(linha.startswith(("-e", ".")) for linha in linhas)
+
+
+def test_painel_poe_a_raiz_do_projeto_no_sys_path_antes_de_importar_o_nucleo():
+    """Sem instalação editável o Streamlit só põe app/ no sys.path; o painel põe a raiz."""
+    fonte = (RAIZ_DO_PROJETO / "app" / "painel.py").read_text(encoding="utf-8")
+    arvore = ast.parse(fonte)
+    primeiro_import_do_projeto = min(
+        n.lineno
+        for n in arvore.body
+        if isinstance(n, ast.ImportFrom)
+        and (n.module or "").split(".")[0] in {"analista", "avaliacao"}
+    )
+    antes = "\n".join(fonte.splitlines()[: primeiro_import_do_projeto - 1])
+
+    assert "Path(__file__).resolve().parents[1]" in antes
+    assert "sys.path.insert(0, " in antes
 
 
 # --- chat -------------------------------------------------------------------------------------
