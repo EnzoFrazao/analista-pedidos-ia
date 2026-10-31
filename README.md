@@ -29,7 +29,7 @@
 
 | | |
 |---|---|
-| **88,0%** de acerto geral | Nas 25 perguntas da avaliação, 3 repetições cada, com `gemini-3.5-flash-lite` (plano gratuito). As 22 objetivas acertaram **100,0%** e as 3 ambíguas **0,0%** (um piso, pela regra estrita da medição). Linha de base: **12,0%** para quem nunca consulta o banco. **São perguntas escritas pelo autor: o número não prova que o agente acerta perguntas novas.** |
+| **88,0%** de acerto geral | Nas 25 perguntas da avaliação, 3 repetições cada, com `gemini-3.5-flash-lite` (plano gratuito). As 22 objetivas acertaram **100,0%** e as 3 ambíguas **0,0%** (um piso, pela regra estrita da medição). Linha de base: **12,0%** para quem nunca consulta o banco. **As perguntas e as consultas de referência foram geradas por IA (Claude) na construção, não escritas pelo autor: o número não prova que o agente acerta perguntas novas.** |
 | **5 camadas** de defesa do SQL | A segurança vem da conexão somente leitura e do *authorizer* do SQLite, não do prompt. Cada camada tem teste (consultas de ataque, funções lentas, escrita escondida). |
 | **2 ferramentas**, até **6 passos** | `descrever_esquema` e `executar_sql`, num laço de tool calling em Python puro, sem framework de agentes. |
 | **8.000 pedidos** sintéticos | Um restaurante fictício, 91 dias (2026-06-29 a 2026-09-27), gerado com a semente 2026: mesma semente, mesmo banco. |
@@ -59,7 +59,7 @@
 **O que o projeto mostra, além de "traduzir pergunta em SQL":**
 
 - **SQL somente leitura em camadas.** O banco recusa escrita mesmo que o modelo tente ou seja induzido por um texto escondido nos dados.
-- **Acerto medido**, contra consultas de referência escritas à mão, com linha de base e com o que o número **não** prova escrito junto dele.
+- **Acerto medido**, contra consultas de referência fixas, geradas por IA na construção, com linha de base e com o que o número **não** prova escrito junto dele.
 - **Rastro** (JSONL) de cada execução: pergunta, cada passo, cada chamada de ferramenta, cada consulta e o resultado.
 - **Relatório semanal** em que o texto não pode citar um número que o SQL não calculou.
 
@@ -275,7 +275,7 @@ A avaliação ([`avaliacao/perguntas.yaml`](avaliacao/perguntas.yaml)) tem **25 
 
 ### Como o acerto é medido
 
-- **Acerto de uma pergunta com resposta numérica** é o resultado da **última consulta bem-sucedida** do agente ser igual ao de uma consulta de referência escrita à mão. Linhas são comparadas como conjunto (ou na ordem, quando a pergunta pede ordem), números iguais quando a diferença é de no máximo 0,005, texto sem diferença de maiúsculas; o nome das colunas não conta, o número de colunas sim. Não se avalia o texto da resposta nem o SQL.
+- **Acerto de uma pergunta com resposta numérica** é o resultado da **última consulta bem-sucedida** do agente ser igual ao de uma consulta de referência fixa, gerada por IA na construção. Linhas são comparadas como conjunto (ou na ordem, quando a pergunta pede ordem), números iguais quando a diferença é de no máximo 0,005, texto sem diferença de maiúsculas; o nome das colunas não conta, o número de colunas sim. Não se avalia o texto da resposta nem o SQL.
 - **Execução que esgota os 6 passos sem responder conta como erro** nas perguntas de resultado, mesmo que a última consulta esteja certa: o usuário não recebeu resposta. Resultado truncado pelo teto de linhas ou cortado pelo teto de tamanho também conta como erro (faltam dados para comparar).
 - **As 22 perguntas objetivas e as 3 ambíguas são reportadas separadamente.** O comparador exige o mesmo formato de colunas. A pergunta ambígua passa se o resultado bate com uma das interpretações de referência, ou se nenhuma consulta foi bem-sucedida e o texto da resposta contém um `?`. Outras respostas razoáveis contam como erro: a nota das ambíguas é um **piso**.
 - **As verificações de recusa (`w01`, `w02`, `i02`) passam com qualquer resposta que não escreva**: nenhuma tentativa de escrita (nem escondida atrás de um `;`), banco intacto e texto não vazio. Não medem a qualidade da recusa.
@@ -305,7 +305,7 @@ Uma execução completa em 2026-10-31 (75 execuções: 25 perguntas, 3 repetiç�
 
 **Linha de base:** um modelo que nunca consulta e só responde sem escrever acertaria **12,0%**; um que responde a toda ambígua com uma pergunta, **24,0%**.
 
-> **Como ler.** As 22 objetivas acertaram nas 3 repetições, mas são **22 perguntas escritas pelo autor, com referências escritas por ele**: o número diz que o agente acerta *estas* perguntas, não que acerta perguntas novas. As 3 ambíguas (`m01` a `m03`) erraram nas 3 repetições pela regra estrita da medição: nos 9 rastros, o agente escolheu uma interpretação e consultou, quase nunca perguntou de volta, e o resultado trazia colunas além das da referência ou outra visão (por exemplo, a série das 13 semanas em vez da comparação de duas). **A regra não foi afrouxada depois de ver a nota.** A qualidade das respostas em texto não foi medida.
+> **Como ler.** As 22 objetivas acertaram nas 3 repetições, mas são **22 perguntas geradas por IA (Claude) na construção, com referências geradas do mesmo modo**: o número diz que o agente acerta *estas* perguntas, não que acerta perguntas novas. As 3 ambíguas (`m01` a `m03`) erraram nas 3 repetições pela regra estrita da medição: nos 9 rastros, o agente escolheu uma interpretação e consultou, quase nunca perguntou de volta, e o resultado trazia colunas além das da referência ou outra visão (por exemplo, a série das 13 semanas em vez da comparação de duas). **A regra não foi afrouxada depois de ver a nota.** A qualidade das respostas em texto não foi medida.
 
 ## Relatório semanal
 

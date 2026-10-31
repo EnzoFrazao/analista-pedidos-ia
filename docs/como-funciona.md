@@ -99,7 +99,7 @@ Sai com 0, 1 (falhou) ou 2 (sem chave), e nunca imprime a chave.
 ## Avaliação (`avaliacao/`)
 
 **`perguntas.yaml` e `perguntas.py`.** As 25 perguntas, cada uma com texto, categoria, forma de
-verificação e as consultas de referência escritas à mão. O texto de cada pergunta diz o formato da
+verificação e as consultas de referência fixas, geradas por IA na construção. O texto de cada pergunta diz o formato da
 resposta (colunas, ordem, casas decimais), porque o agente só vê o texto e o acerto compara resultados.
 `carregar_perguntas` valida os campos e levanta erro citando o id da pergunta torta.
 

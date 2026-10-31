@@ -90,8 +90,8 @@ até o mantenedor aprovar o texto. Lacunas conhecidas:
   com chave real em 2026-10-31. Os limites numéricos do plano gratuito continuam desconhecidos (a
   primeira tentativa de avaliação parou no limite por minuto) (`P-002`).
 - Nas 3 perguntas ambíguas, o agente quase nunca pergunta de volta: escolhe uma interpretação e consulta,
-  e a medição estrita as conta como erro (0 de 3). A nota das objetivas é 22 de 22 em perguntas escritas
-  pelo próprio autor.
+  e a medição estrita as conta como erro (0 de 3). A nota das objetivas é 22 de 22 em perguntas geradas
+  por IA na construção, não pelo autor.
 - Publicado em 2026-10-31: repositório público e painel em `https://pedidoai.streamlit.app/`
   (Streamlit Community Cloud). O build e o chat funcionaram; o plano gratuito dorme depois de umas 12 h
   sem acesso (`P-004`).

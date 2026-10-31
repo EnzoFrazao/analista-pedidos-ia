@@ -15,7 +15,7 @@ perguntas (ambíguas, recusa, injeção) não têm um único resultado esperado.
 ## Decisão
 
 Acerto é igualdade do resultado da **última consulta bem-sucedida** da execução com o de uma consulta de
-referência escrita à mão (`avaliacao/avaliar.py`, `_ultimo_resultado`; `avaliacao/comparador.py`), e não
+referência fixa, gerada por IA na construção (`avaliacao/avaliar.py`, `_ultimo_resultado`; `avaliacao/comparador.py`), e não
 do texto do SQL. O texto de cada pergunta diz o formato da resposta (colunas, ordem, casas). A nota é
 reportada como média e pior caso de 3 repetições; as 22 perguntas objetivas e as 3 ambíguas têm linhas
 separadas (a das ambíguas é um piso); as verificações de recusa passam com qualquer resposta que não

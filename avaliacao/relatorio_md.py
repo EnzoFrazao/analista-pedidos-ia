@@ -35,9 +35,9 @@ def _comando(resultado: dict) -> str:
 
 TEXTO_O_QUE_MEDEM = (
     "**O que estes números medem.** Acerto é o resultado da **última consulta SQL "
-    "bem-sucedida** do agente ser igual ao de uma consulta de referência escrita à mão; "
-    "não se avalia o texto da resposta nem o SQL. Dados sintéticos de um restaurante "
-    "fictício."
+    "bem-sucedida** do agente ser igual ao de uma consulta de referência fixa, gerada "
+    "por IA na construção; não se avalia o texto da resposta nem o SQL. Dados sintéticos "
+    "de um restaurante fictício."
 )
 
 # Limites da medição: sem eles a nota prometeria mais do que o teste prova.
