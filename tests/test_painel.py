@@ -118,7 +118,7 @@ def test_abre_sem_chave_sem_excecao_e_com_as_tres_abas():
     at = abrir()
 
     assert not at.exception
-    assert [aba.label for aba in at.tabs] == ["Painel", "Pergunte", "Avaliação"]
+    assert [aba.label for aba in at.tabs] == ["Pergunte", "Painel", "Avaliação"]  # Pergunte abre
     assert BANNER in textos(at.info)
     assert "iFood" not in tudo_que_aparece(at)
 
@@ -322,7 +322,7 @@ def test_depois_de_falha_do_provedor_a_proxima_pergunta_funciona(monkeypatch):
     assert not at.exception
     assert TEXTO_PROVEDOR in textos(at.warning)  # a falha continua na conversa
     assert [m.name for m in at.chat_message] == ["user", "assistant", "user", "assistant"]
-    assert "Agora foi." in textos(list(at.chat_message)[3].markdown)
+    assert "Agora foi." in textos(list(at.chat_message)[1].markdown)  # a mais recente vem primeiro
     assert any("1 de 10 perguntas" in c for c in textos(at.caption))  # só a respondida conta
 
 
@@ -376,7 +376,7 @@ def test_pergunta_vazia_ou_longa_nao_chama_o_modelo(monkeypatch, texto):
 def test_aba_pergunte_avisa_independencia_registro_e_limites():
     at = abrir()
 
-    legendas = textos(at.tabs[1].caption)
+    legendas = textos(at.tabs[0].caption)
     juntas = " ".join(legendas)
     assert "Cada pergunta é independente: inclua período e métrica." in legendas
     assert "registradas" in juntas and "runs/" in juntas  # perguntas ficam no servidor
@@ -392,11 +392,13 @@ def test_sem_chave_as_perguntas_sugeridas_ficam_desligadas():
     assert all(b.disabled for b in botoes)
 
 
-def test_clicar_numa_pergunta_sugerida_pergunta_e_tira_as_sugestoes_da_tela(monkeypatch):
+def test_clicar_numa_pergunta_sugerida_pergunta_e_recolhe_as_sugestoes(monkeypatch):
     modelo = ModeloFalso([resposta("Resposta da sugestão.")])
     usar_modelo(monkeypatch, modelo)
     at = abrir()
     sugerida = PERGUNTAS_SUGERIDAS[0]
+    assert "Sem ideia? Clique numa pergunta:" in tudo_que_aparece(at)
+    assert not [e for e in at.expander if e.label == "Perguntas sugeridas"]
 
     next(b for b in at.button if b.label == sugerida).click().run()
 
@@ -405,7 +407,8 @@ def test_clicar_numa_pergunta_sugerida_pergunta_e_tira_as_sugestoes_da_tela(monk
     assert [m.name for m in mensagens] == ["user", "assistant"]
     assert sugerida in textos(mensagens[0].markdown)
     assert "Resposta da sugestão." in textos(mensagens[1].markdown)
-    assert not [b for b in at.button if b.label in PERGUNTAS_SUGERIDAS]
+    assert "Sem ideia? Clique numa pergunta:" not in tudo_que_aparece(at)
+    assert [e for e in at.expander if e.label == "Perguntas sugeridas"]  # seguem à mão, recolhidas
     assert any("1 de 10 perguntas" in c for c in textos(at.caption))
 
 
@@ -465,7 +468,7 @@ def test_duas_perguntas_seguidas_funcionam(monkeypatch):
 
     assert not at.exception
     respostas = [textos(m.markdown) for m in at.chat_message if m.name == "assistant"]
-    assert respostas == [["Primeira resposta."], ["Segunda resposta."]]
+    assert respostas == [["Segunda resposta."], ["Primeira resposta."]]  # mais recente primeiro
     assert len({id(c) for c in conexoes}) == len(conexoes) >= 4  # nenhuma conexão reaproveitada
     for conn in conexoes:  # e todas fechadas
         with pytest.raises(sqlite3.ProgrammingError):
@@ -530,9 +533,9 @@ def test_falha_ao_calcular_a_semana_vira_erro_amigavel(monkeypatch):
     at = abrir()
 
     assert not at.exception
-    assert at.tabs[0].error
+    assert at.tabs[1].error
     assert "detalhe-interno" not in tudo_que_aparece(at)
-    assert [aba.label for aba in at.tabs] == ["Painel", "Pergunte", "Avaliação"]
+    assert [aba.label for aba in at.tabs] == ["Pergunte", "Painel", "Avaliação"]
 
 
 def test_ranking_do_painel_nao_mostra_o_item_com_instrucao_escondida(banco_path):

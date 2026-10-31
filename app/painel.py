@@ -91,6 +91,8 @@ ESTILO = """
 }
 [data-testid="stMetricValue"], [data-testid="stMetricValue"] * { overflow: visible !important; }
 [data-testid="stChatMessage"] { padding: 0.75rem 0.25rem; }
+[data-testid="stChatInput"] { border: 2px solid #1E40AF; box-shadow: 0 2px 10px rgba(30,64,175,.18); }
+[data-testid="stChatInput"] textarea { font-size: 1.05rem; }
 .stButton button { height: auto; min-height: 2.75rem; }
 .stButton button p { white-space: normal; text-align: left; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -113,11 +115,21 @@ TEXTO_SEM_CHAVE = (
     "O chat está desligado: este ambiente não tem a chave do modelo (LLM_API_KEY). "
     "O painel e a página de avaliação funcionam sem ela."
 )
+PASSOS_DE_USO = (
+    ("edit_note", "1. Escreva", "Em português, com período e métrica. Ou clique numa sugestão."),
+    ("database", "2. O agente consulta", "Ele escreve um SQL e roda num banco só para leitura."),
+    ("fact_check", "3. Confira", "A resposta vem com a consulta usada, para você verificar."),
+)
+PLACEHOLDER_DA_PERGUNTA = "Escreva sua pergunta aqui e tecle Enter"
+TEXTO_SOBRE_OS_DADOS = (
+    "**Sobre o que perguntar.** Os dados são 8.000 pedidos de um restaurante fictício, de 29/06 a "
+    "27/09/2026, em quatro canais (app próprio, marketplace, WhatsApp e balcão). Cada pedido tem "
+    "bairro, status, valor, taxa de entrega, tempo de entrega, nota e itens do cardápio. Perguntas "
+    "sobre outra coisa não têm resposta aqui."
+)
 TEXTO_COMO_RESPONDE = (
-    "1. O modelo escreve uma consulta SQL a partir da sua pergunta.\n"
-    "2. A consulta roda num banco aberto **só para leitura**: nada é alterado, mesmo que o "
-    "pedido seja esse.\n"
-    "3. A resposta vem em texto, com a consulta usada logo abaixo para você conferir."
+    "**Como responde.** O banco é aberto só para leitura: nada é alterado, mesmo que o pedido seja "
+    "esse. A consulta usada aparece abaixo de cada resposta; confira-a, porque o modelo pode errar."
 )
 TEXTO_NOTA_DO_PROVEDOR = (
     "Se o serviço do modelo estiver no limite de uso, a resposta pode demorar mais: o painel "
@@ -496,72 +508,87 @@ def _aba_pergunte(config: Configuracao) -> None:
     modelo = _modelo(config)
     limite = LimiteDeUso(config.limite_sessao, config.limite_dia, config.estado_limites)
 
+    pendente = st.session_state.pop("pergunta_pendente", None)  # clique numa pergunta sugerida
+
+    st.subheader("Faça uma pergunta sobre os pedidos")
+    with st.container(border=True):  # um quadro só: no celular o campo não desce da tela
+        for icone, titulo, texto in PASSOS_DE_USO:
+            st.markdown(f":material/{icone}: **{titulo}** — {texto}")
+    if modelo is None:
+        st.warning(TEXTO_SEM_CHAVE)
+
+    # O campo vem primeiro, logo abaixo do guia: é a função principal. As respostas ficam abaixo,
+    # da mais nova para a mais antiga, para a pergunta nova nunca sumir para o fim da página.
+    entrada = st.chat_input(PLACEHOLDER_DA_PERGUNTA, disabled=modelo is None)
+    if entrada is None:
+        entrada = pendente
+
     contador = st.empty()
 
     def mostrar_contador() -> None:
         contador.caption(f"{_feitas()} de {config.limite_sessao} perguntas nesta sessão")
 
     mostrar_contador()
+
+    nova = None
+    if entrada is not None and modelo is not None:
+        nova = entrada.strip()
+        if not nova:
+            st.warning("Escreva uma pergunta antes de enviar.")
+            nova = None
+        elif len(nova) > MAX_CARACTERES_PERGUNTA:
+            st.warning(
+                f"A pergunta passa de {MAX_CARACTERES_PERGUNTA} caracteres; resuma e tente de novo."
+            )
+            nova = None
+
+    _sugestoes(modelo, aberto=not _historico() and nova is None)
     st.caption(TEXTO_PERGUNTA_INDEPENDENTE)
     st.caption(TEXTO_REGISTRO_E_LIMITES)
-    with st.expander("Como o agente responde e o que fazer se demorar", icon=":material/info:"):
+    with st.expander("O que dá para perguntar e como o agente responde", icon=":material/info:"):
+        st.markdown(TEXTO_SOBRE_OS_DADOS)
         st.markdown(TEXTO_COMO_RESPONDE)
         st.caption(TEXTO_NOTA_DO_PROVEDOR)
-    if modelo is None:
-        st.warning(TEXTO_SEM_CHAVE)
 
-    pendente = st.session_state.pop("pergunta_pendente", None)  # clique numa pergunta sugerida
-    sugestoes = st.empty()
-    if not _historico() and pendente is None:
-        with sugestoes.container(border=True):
-            st.markdown("**Para começar, escolha uma pergunta** (ou escreva a sua abaixo)")
-            colunas = st.columns(2)
-            for n, texto in enumerate(PERGUNTAS_SUGERIDAS):
-                colunas[n % 2].button(
-                    texto,
-                    key=f"sugestao_{n}",
-                    on_click=_escolher_pergunta,
-                    args=(texto,),
-                    disabled=modelo is None,
-                    use_container_width=True,
-                )
+    with st.container():
+        if nova is not None:
+            autorizada, motivo = limite.autorizar(_feitas())
+            with st.chat_message("user"):
+                st.markdown(nova)
+            with st.chat_message("assistant", avatar=":material/analytics:"):
+                if autorizada:
+                    with st.spinner("Consultando os dados..."):
+                        item = _perguntar(nova, modelo, limite, config)
+                else:  # o aviso do limite fica na conversa e sobrevive aos próximos reruns
+                    item = {"tipo": "aviso", "texto": motivo, "consultas": []}
+                _mostrar_resposta(item, config.limite_linhas)
+        for anterior in reversed(_historico()):
+            with st.chat_message("user"):
+                st.markdown(anterior["pergunta"])
+            with st.chat_message("assistant", avatar=":material/analytics:"):
+                _mostrar_resposta(anterior, config.limite_linhas)
+    if nova is not None:
+        _historico().append({"pergunta": nova, **item})
+        mostrar_contador()
 
-    for item in _historico():
-        with st.chat_message("user"):
-            st.markdown(item["pergunta"])
-        with st.chat_message("assistant", avatar=":material/analytics:"):
-            _mostrar_resposta(item, config.limite_linhas)
 
-    entrada = st.chat_input("Pergunte algo sobre os pedidos", disabled=modelo is None)
-    if entrada is None:
-        entrada = pendente
-    if entrada is not None:
-        sugestoes.empty()  # a conversa começou: as sugestões saem da frente
-    if entrada is None or modelo is None:
-        return
-
-    pergunta = entrada.strip()
-    if not pergunta:
-        st.warning("Escreva uma pergunta antes de enviar.")
-        return
-    if len(pergunta) > MAX_CARACTERES_PERGUNTA:
-        st.warning(
-            f"A pergunta passa de {MAX_CARACTERES_PERGUNTA} caracteres; resuma e tente de novo."
+def _sugestoes(modelo, *, aberto: bool) -> None:
+    """Botões com perguntas prontas: em destaque no começo, recolhidos depois da primeira resposta."""
+    if aberto:
+        corpo = st.container(border=True)
+        corpo.markdown("**Sem ideia? Clique numa pergunta:**")
+    else:
+        corpo = st.expander("Perguntas sugeridas", icon=":material/lightbulb:")
+    colunas = corpo.columns(2)
+    for n, texto in enumerate(PERGUNTAS_SUGERIDAS):
+        colunas[n % 2].button(
+            texto,
+            key=f"sugestao_{n}",
+            on_click=_escolher_pergunta,
+            args=(texto,),
+            disabled=modelo is None,
+            use_container_width=True,
         )
-        return
-
-    autorizada, motivo = limite.autorizar(_feitas())
-    with st.chat_message("user"):
-        st.markdown(pergunta)
-    with st.chat_message("assistant", avatar=":material/analytics:"):
-        if autorizada:
-            with st.spinner("Consultando os dados..."):
-                item = _perguntar(pergunta, modelo, limite, config)
-        else:  # o aviso do limite fica na conversa e sobrevive aos próximos reruns
-            item = {"tipo": "aviso", "texto": motivo, "consultas": []}
-        _mostrar_resposta(item, config.limite_linhas)
-    _historico().append({"pergunta": pergunta, **item})
-    mostrar_contador()
 
 
 # --- aba Avaliação ----------------------------------------------------------------------------
@@ -691,11 +718,11 @@ def main() -> None:
         st.error(TEXTO_FALHA_DADOS)
         st.stop()
 
-    aba_painel, aba_pergunte, aba_avaliacao = st.tabs(["Painel", "Pergunte", "Avaliação"])
-    with aba_painel:
-        _aba(_aba_painel, config)
+    aba_pergunte, aba_painel, aba_avaliacao = st.tabs(["Pergunte", "Painel", "Avaliação"])
     with aba_pergunte:
         _aba(_aba_pergunte, config)
+    with aba_painel:
+        _aba(_aba_painel, config)
     with aba_avaliacao:
         _aba(_aba_avaliacao, config)
 
