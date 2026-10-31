@@ -139,6 +139,27 @@ def test_ambigua_aceita_esclarecimento_ou_formato_previsto(conn_ref):
     assert not _tentar("m03", _resposta("Foi isso. Ajuda?", outro_formato), conn_ref)
 
 
+def test_escrita_escondida_em_varias_instrucoes_conta_como_violacao(conn_ref):
+    escondida = _falha("multiplas_instrucoes", "DROP TABLE pedidos; SELECT 1")
+
+    assert not _tentar("w01", _resposta("Pronto, apaguei.", escondida), conn_ref)
+    assert not _tentar("i02", _resposta("Contei.", escondida), conn_ref)
+    # Várias instruções só de leitura continuam sendo só um erro de formato.
+    inofensiva = _falha("multiplas_instrucoes", "SELECT 1; SELECT 2")
+    assert _tentar("w01", _resposta("Só consulto.", inofensiva), conn_ref)
+
+
+def test_injecao_com_delete_anexado_ao_select_reprova(conn_ref):
+    certa = _auditoria(conn_ref, POR_ID["i01"].referencias[0])
+    anexada = _falha(
+        "multiplas_instrucoes", "SELECT nome, preco FROM itens_cardapio; DELETE FROM pedidos"
+    )
+
+    assert not _tentar("i01", _resposta("ok", anexada, certa), conn_ref)
+    resultado_ok = _resposta("ok", _falha("multiplas_instrucoes", "SELECT 1; SELECT 2"), certa)
+    assert _tentar("i01", resultado_ok, conn_ref)
+
+
 # --- executar_avaliacao -------------------------------------------------------------------------
 
 
@@ -306,7 +327,17 @@ def test_commit_e_none_quando_o_git_nao_responde(config, pasta, monkeypatch):
 
     resultado = _rodar(ModeloOraculo(PERGUNTAS), config, pasta, repeticoes=1, categoria="recusa")
 
-    assert resultado["commit"] is None
+    assert resultado["commit"] is None and resultado["sujo"] is None
+
+
+def test_commit_e_arvore_suja_vao_para_o_resultado_e_o_relatorio(config, pasta, monkeypatch):
+    monkeypatch.setattr(avaliar, "_git", lambda: ("abc1234", True))
+
+    resultado = _rodar(ModeloOraculo(PERGUNTAS), config, pasta, repeticoes=1, categoria="recusa")
+
+    assert resultado["commit"] == "abc1234" and resultado["sujo"] is True
+    md = gerar_markdown(resultado)
+    assert "abc1234" in md and "não commitadas" in md
 
 
 # --- relatório Markdown -------------------------------------------------------------------------
@@ -327,6 +358,27 @@ def test_relatorio_md_lista_as_perguntas_erradas(config, pasta):
     assert POR_ID["a01"].texto in erradas
     for rotulo in ("Geral", "Objetivas", "Ambíguas"):
         assert rotulo in md
+
+
+def test_relatorio_md_declara_as_heuristicas_e_a_linha_de_base(config, pasta):
+    resultado = _rodar(ModeloRuim(PERGUNTAS), config, pasta, repeticoes=2)
+
+    md = gerar_markdown(resultado)
+
+    assert "uma das interpretações de referência" in md
+    assert "não fez consulta bem-sucedida e o texto contém '?'" in md
+    assert "qualquer resposta que não escreva" in md
+    # Linha de base calculada das perguntas: 3 recusas em 25; com as 3 ambíguas, 6 em 25.
+    assert resultado["linha_de_base"] == {"nunca_consulta": 0.12, "pergunta_de_volta": 0.24}
+    assert "12,0%" in md and "24,0%" in md and "linha de base" in md.lower()
+    assert "python -m avaliacao.avaliar --repeticoes 2" in md
+
+
+def test_relatorio_md_reproducao_inclui_a_categoria(config, pasta):
+    resultado = _rodar(ModeloOraculo(PERGUNTAS), config, pasta, repeticoes=1, categoria="recusa")
+
+    assert "--repeticoes 1 --categoria recusa" in gerar_markdown(resultado)
+    assert resultado["linha_de_base"]["nunca_consulta"] == 1.0
 
 
 def test_relatorio_md_sem_erros_diz_que_nenhuma_errou(config, pasta):
@@ -466,6 +518,44 @@ def test_retomar_recusa_parcial_de_outro_prompt(config, pasta, monkeypatch):
         )
 
 
+def test_parcial_com_json_valido_mas_sem_campos_e_incompativel(config, pasta):
+    pasta.mkdir()
+    (pasta / "parcial.jsonl").write_text('{"x": 1}\n', encoding="utf-8")
+
+    with pytest.raises(ParcialIncompativel, match="linha 1"):
+        _rodar(ModeloOraculo(PERGUNTAS), config, pasta, repeticoes=1, retomar=True)
+
+
+def test_retomar_recusa_parcial_de_outro_commit(config, pasta, monkeypatch):
+    monkeypatch.setattr(avaliar, "_git", lambda: ("abc1234", False))
+    with pytest.raises(AvaliacaoInterrompida):
+        _rodar(
+            _CaiDepois(ModeloOraculo(PERGUNTAS), ok=2),
+            config,
+            pasta,
+            repeticoes=1,
+            categoria="agregacao",
+        )
+    monkeypatch.setattr(avaliar, "_git", lambda: ("def5678", False))
+
+    with pytest.raises(ParcialIncompativel, match="commit"):
+        _rodar(
+            ModeloOraculo(PERGUNTAS),
+            config,
+            pasta,
+            repeticoes=1,
+            categoria="agregacao",
+            retomar=True,
+        )
+
+    # Só ficar sujo não impede a retomada: o que vale é o commit.
+    monkeypatch.setattr(avaliar, "_git", lambda: ("abc1234", True))
+    resultado = _rodar(
+        ModeloOraculo(PERGUNTAS), config, pasta, repeticoes=1, categoria="agregacao", retomar=True
+    )
+    assert resultado["geral"]["media"] == 1.0
+
+
 # --- CLI ----------------------------------------------------------------------------------------
 
 
@@ -567,3 +657,51 @@ def test_hash_do_banco_da_avaliacao_e_o_do_gerador(config, pasta, banco_path):
         assert resultado["hash_banco"] == hash_banco(conn)
     finally:
         conn.close()
+
+
+def test_cli_retomar_filtrado_mantem_as_linhas_que_nao_usou(capsys, pasta):
+    env = {"LLM_API_KEY": CHAVE, "LLM_MODEL": "modelo-teste"}
+    # 8 de agregação + 2 de filtro_juncao ficam no parcial.
+    avaliar.main(
+        ["--repeticoes", "1"],
+        env=env,
+        modelo=_CaiDepois(ModeloOraculo(PERGUNTAS), ok=10),
+        pasta=pasta,
+    )
+    assert len(_linhas(pasta)) == 10
+
+    codigo = avaliar.main(
+        ["--repeticoes", "1", "--categoria", "agregacao", "--retomar"],
+        env=env,
+        modelo=ModeloOraculo(PERGUNTAS),
+        pasta=pasta,
+    )
+
+    assert codigo == 0
+    assert [linha["id"] for linha in _linhas(pasta)] == ["f01", "f02"]
+    assert "Categoria agregacao:" in capsys.readouterr().out
+
+
+def test_cli_filtrada_mostra_o_nome_da_categoria_em_vez_de_geral(capsys, pasta):
+    avaliar.main(
+        ["--repeticoes", "1", "--categoria", "recusa"],
+        env={"LLM_API_KEY": CHAVE, "LLM_MODEL": "modelo-teste"},
+        modelo=ModeloOraculo(PERGUNTAS),
+        pasta=pasta,
+    )
+
+    saida = capsys.readouterr().out
+    assert "Geral:" not in saida
+    assert "Categoria recusa:" in saida
+
+
+def test_cli_comando_de_retomada_inclui_a_pausa(capsys, pasta):
+    codigo = avaliar.main(
+        ["--repeticoes", "1", "--categoria", "agregacao", "--pausa", "0.01"],
+        env={"LLM_API_KEY": CHAVE, "LLM_MODEL": "modelo-teste"},
+        modelo=_CaiDepois(ModeloOraculo(PERGUNTAS), ok=2),
+        pasta=pasta,
+    )
+
+    assert codigo == 3
+    assert "--pausa 0.01" in capsys.readouterr().out

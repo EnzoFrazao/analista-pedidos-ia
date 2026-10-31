@@ -136,6 +136,15 @@ def _instrucoes(sql: str) -> list[str]:
     return [parte.strip() for parte in partes if parte.strip()]
 
 
+def tenta_escrita(sql: str) -> bool:
+    """True se alguma instrução do texto não começa por SELECT ou WITH (sem os comentários).
+
+    Serve à avaliação: uma escrita escondida atrás de um `;` é rejeitada como
+    `multiplas_instrucoes`, mas continua sendo uma tentativa de escrita.
+    """
+    return any(not _INICIO_PERMITIDO.match(instrucao) for instrucao in _instrucoes(sql))
+
+
 def _validar_texto(sql: str) -> str:
     instrucoes = _instrucoes(sql)
     if not instrucoes:

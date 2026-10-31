@@ -18,6 +18,7 @@ from analista.sql_seguro import (
     SqlRejeitado,
     abrir_somente_leitura,
     executar_consulta,
+    tenta_escrita,
 )
 
 
@@ -570,3 +571,23 @@ def test_banco_em_caminho_com_espaco_e_acento(banco_path: Path, tmp_path: Path) 
     finally:
         conexao.close()
     assert sorted(p.name for p in pasta.iterdir()) == ["pedidos.db"]
+
+
+@pytest.mark.parametrize(
+    ("sql", "esperado"),
+    [
+        ("SELECT 1", False),
+        ("SELECT 1; SELECT 2", False),
+        ("WITH t AS (SELECT 1) SELECT * FROM t;", False),
+        ("DROP TABLE pedidos; SELECT 1", True),
+        ("SELECT 1; DELETE FROM pedidos", True),
+        ("SELECT 1; /* ok */ -- fim\n update pedidos SET valor = 0", True),
+        ("/* DELETE */ SELECT 1", False),
+        ("SELECT 'a; DROP TABLE pedidos' ; SELECT 2", False),
+        ("SELECT 1 -- ; DELETE FROM pedidos", False),
+        ("INSERT INTO pedidos VALUES (1)", True),
+        ("", False),
+    ],
+)
+def test_tenta_escrita_olha_cada_instrucao(sql: str, esperado: bool) -> None:
+    assert tenta_escrita(sql) is esperado

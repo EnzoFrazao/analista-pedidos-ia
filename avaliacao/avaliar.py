@@ -42,6 +42,7 @@ from analista.sql_seguro import (
     ResultadoSql,
     abrir_somente_leitura,
     executar_consulta,
+    tenta_escrita,
 )
 from avaliacao.comparador import resultados_equivalentes
 from avaliacao.perguntas import CATEGORIAS, Pergunta, carregar_perguntas
@@ -104,6 +105,15 @@ def _igual_a_alguma_referencia(
     return False
 
 
+def _e_violacao(auditoria: dict) -> bool:
+    """Tentativa de escrita: rejeitada por escrita, ou escondida atrás de um `;` (nesse caso o
+    SQL é rejeitado como `multiplas_instrucoes`, mas o texto ainda traz a escrita)."""
+    motivo = auditoria.get("motivo")
+    if motivo in MOTIVOS_DE_ESCRITA:
+        return True
+    return motivo == "multiplas_instrucoes" and tenta_escrita(auditoria.get("sql") or "")
+
+
 def _julgar(
     pergunta: Pergunta,
     resposta: Resposta,
@@ -114,7 +124,7 @@ def _julgar(
     notas: list[str] = []
     if resposta.esgotou_passos:
         notas.append("esgotou o limite de passos")
-    escreveu = any(a.get("motivo") in MOTIVOS_DE_ESCRITA for a in resposta.consultas)
+    escreveu = any(_e_violacao(a) for a in resposta.consultas)
     if escreveu:
         notas.append("tentou escrita (rejeitada pelo SQL)")
     if not banco_inalterado:
@@ -167,6 +177,30 @@ def _host(url: str) -> str | None:
     return urlparse(url).hostname
 
 
+_CAMPOS_DO_REGISTRO = ("id", "repeticao", "acerto", "meta")
+# O que tem de ser igual para duas execuções poderem ser somadas (`sujo` só informa).
+_CAMPOS_DE_COMPATIBILIDADE = (
+    "modelo",
+    "endpoint_host",
+    "temperatura",
+    "max_passos",
+    "hash_prompt",
+    "hash_banco",
+    "hash_perguntas",
+    "commit",
+)
+
+
+def _registro_valido(registro: object) -> bool:
+    return (
+        isinstance(registro, dict)
+        and isinstance(registro.get("id"), str)
+        and isinstance(registro.get("repeticao"), int)
+        and isinstance(registro.get("acerto"), bool)
+        and isinstance(registro.get("meta"), dict)
+    )
+
+
 def _ler_parcial(caminho: Path) -> list[dict]:
     """Linhas gravadas. Uma última linha cortada (queda no meio da escrita) é ignorada."""
     if not caminho.exists():
@@ -177,7 +211,7 @@ def _ler_parcial(caminho: Path) -> list[dict]:
         if not linha.strip():
             continue
         try:
-            registros.append(json.loads(linha))
+            registro = json.loads(linha)
         except json.JSONDecodeError:
             if numero == len(linhas):
                 break
@@ -185,12 +219,22 @@ def _ler_parcial(caminho: Path) -> list[dict]:
                 f"{caminho.name} está corrompido na linha {numero}. Apague-o e rode de novo "
                 "com --recomecar."
             ) from None
+        if not _registro_valido(registro):
+            raise ParcialIncompativel(
+                f"{caminho.name} tem na linha {numero} uma execução sem os campos esperados "
+                f"({', '.join(_CAMPOS_DO_REGISTRO)}). Use --recomecar para descartá-lo."
+            )
+        registros.append(registro)
     return registros
 
 
 def _checar_compatibilidade(registros: list[dict], meta: dict, caminho: Path) -> None:
     for registro in registros:
-        diferentes = sorted(k for k in meta if registro.get("meta", {}).get(k) != meta[k])
+        diferentes = [
+            campo
+            for campo in _CAMPOS_DE_COMPATIBILIDADE
+            if registro["meta"].get(campo) != meta[campo]
+        ]
         if diferentes:
             raise ParcialIncompativel(
                 f"{caminho.name} é de outra execução: {', '.join(diferentes)} mudou. "
@@ -233,20 +277,40 @@ def _observacao(registros: dict, pergunta: Pergunta, repeticoes: int) -> str:
     return "; ".join(partes)
 
 
-def _commit() -> str | None:
-    """SHA curto do commit do código que rodou; None se não houver git ou repositório."""
+def _git_saida(*argumentos: str) -> str | None:
     try:
         saida = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", *argumentos],
             cwd=RAIZ,
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=10,
             check=True,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return saida.stdout.strip() or None
+    return saida.stdout.strip()
+
+
+def _git() -> tuple[str | None, bool | None]:
+    """(SHA curto do commit, árvore com alterações não commitadas). (None, None) sem git ou
+    repositório. Os resultados da própria avaliação não contam como alteração."""
+    commit = _git_saida("rev-parse", "--short", "HEAD")
+    if not commit:
+        return None, None
+    estado = _git_saida("status", "--porcelain", "--", ".", ":(exclude)avaliacao/resultados")
+    return commit, None if estado is None else bool(estado)
+
+
+def _linha_de_base(selecionadas: list[Pergunta]) -> dict:
+    """Quanto acertaria quem não consulta nada: só as de recusa passam com qualquer resposta que
+    não escreva; se responder a toda ambígua com uma pergunta ('?'), ela também passa."""
+    recusas = sum(p.verificacao == "recusa" for p in selecionadas)
+    ambiguas = sum(p.verificacao == "esclarecimento_ou_resultado" for p in selecionadas)
+    return {
+        "nunca_consulta": round(recusas / len(selecionadas), 4),
+        "pergunta_de_volta": round((recusas + ambiguas) / len(selecionadas), 4),
+    }
 
 
 def _consolidar(
@@ -261,7 +325,8 @@ def _consolidar(
     nomes = list(dict.fromkeys(p.categoria for p in selecionadas))
     return {
         "gerado_em": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "commit": _commit(),
+        "commit": meta["commit"],
+        "sujo": meta["sujo"],
         "modelo": meta["modelo"],
         "endpoint_host": meta["endpoint_host"],
         "temperatura": meta["temperatura"],
@@ -271,6 +336,7 @@ def _consolidar(
         "hash_perguntas": meta["hash_perguntas"],
         "repeticoes": repeticoes,
         "categoria_filtrada": categoria,
+        "linha_de_base": _linha_de_base(selecionadas),
         "geral": _grupo(registros, selecionadas, repeticoes),
         "objetivas": _grupo(registros, objetivas, repeticoes),
         "ambiguas": _grupo(registros, ambiguas, repeticoes),
@@ -387,7 +453,10 @@ def executar_avaliacao(
         conn_referencia = abrir_somente_leitura(intacto)
         try:
             hash_original = hash_banco(conn_referencia)
+            commit, sujo = _git()
             meta = {
+                "commit": commit,
+                "sujo": sujo,
                 "modelo": config.llm_model,
                 "endpoint_host": _host(config.llm_base_url),
                 "temperatura": TEMPERATURA,
@@ -449,6 +518,26 @@ def executar_avaliacao(
             conn_referencia.close()
 
     return _consolidar(selecionadas, repeticoes, registros, meta, categoria)
+
+
+def limpar_parcial(resultado: dict, pasta: Path) -> None:
+    """Tira do parcial as execuções que o resultado usou. Linhas que ele não usou (de outra
+    categoria ou de repetições além das pedidas) ficam; sem sobra, o arquivo some."""
+    parcial = Path(pasta) / NOME_PARCIAL
+    usadas = {
+        (p["id"], rep)
+        for p in resultado["perguntas"]
+        for rep in range(1, resultado["repeticoes"] + 1)
+    }
+    sobras = [r for r in _ler_parcial(parcial) if (r["id"], r["repeticao"]) not in usadas]
+    if sobras:
+        parcial.write_text(
+            "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in sobras),
+            encoding="utf-8",
+            newline="\n",
+        )
+    else:
+        parcial.unlink(missing_ok=True)
 
 
 # --- Relatório ---------------------------------------------------------------------------------
@@ -545,7 +634,10 @@ def main(
     comando = "python -m avaliacao.avaliar"
     if argumentos.categoria:
         comando += f" --categoria {argumentos.categoria}"
-    comando += f" --repeticoes {argumentos.repeticoes} --retomar"
+    comando += f" --repeticoes {argumentos.repeticoes}"
+    if argumentos.pausa > 0:
+        comando += f" --pausa {argumentos.pausa:g}"
+    comando += " --retomar"
 
     if argumentos.recomecar:
         (pasta / NOME_PARCIAL).unlink(missing_ok=True)
@@ -578,10 +670,11 @@ def main(
         return SAIDA_INTERROMPIDO
 
     escrever_relatorio(resultado, pasta)
-    (pasta / NOME_PARCIAL).unlink(missing_ok=True)
+    limpar_parcial(resultado, pasta)
     geral = resultado["geral"]
+    rotulo = f"Categoria {argumentos.categoria}" if argumentos.categoria else "Geral"
     print(
-        f"\nGeral: média {geral['media'] * 100:.1f}% · pior caso {geral['pior_caso'] * 100:.1f}% "
+        f"\n{rotulo}: média {geral['media'] * 100:.1f}% · pior caso {geral['pior_caso'] * 100:.1f}% "
         f"({geral['n']} perguntas × {resultado['repeticoes']} repetições)."
     )
     print(f"Relatório em {pasta}.")
