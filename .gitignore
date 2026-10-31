@@ -1,5 +1,8 @@
 .superpowers/
 .env
+.env.*
+!.env.example
+.streamlit/secrets.toml
 .venv/
 data/
 runs/
@@ -13,3 +16,6 @@ dist/
 .pytest_cache/
 .ruff_cache/
 avaliacao/resultados/parcial.jsonl
+avaliacao/resultados/ultima-*.json
+avaliacao/resultados/ultima-*.md
+avaliacao/resultados/*.tmp
