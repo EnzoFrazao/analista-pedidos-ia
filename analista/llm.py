@@ -5,6 +5,7 @@ O restante do código fala com `ModeloLLM` e recebe `MensagemModelo`.
 """
 
 import itertools
+import logging
 import time
 from dataclasses import dataclass
 from typing import Protocol
@@ -12,6 +13,8 @@ from typing import Protocol
 import openai
 
 from analista.config import Configuracao
+
+log = logging.getLogger(__name__)
 
 TEMPERATURA = 0
 MAX_TOKENS = 800
@@ -126,6 +129,7 @@ class ClienteOpenAI:
         esperas_s: tuple[float, ...] = (2, 4, 8),
     ):
         self._modelo = config.llm_model
+        self._chave = config.llm_api_key or ""
         self._esperas_s = esperas_s
         self._contador = itertools.count(1)
         # max_retries=0: as tentativas em 429 são nossas, com esperas conhecidas e testáveis.
@@ -135,6 +139,13 @@ class ClienteOpenAI:
             timeout=_TIMEOUT_S,
             max_retries=0,
         )
+
+    def _registrar(self, erro: openai.APIError) -> None:
+        """Deixa no log do servidor (nunca na tela) o que o provedor respondeu, sem a chave."""
+        corpo = str(getattr(erro, "body", "") or erro)
+        if self._chave:
+            corpo = corpo.replace(self._chave, "***")
+        log.warning("provedor respondeu %s: %s", getattr(erro, "status_code", "?"), corpo[:300])
 
     def completar(self, mensagens: list[dict], ferramentas: list[dict]) -> MensagemModelo:
         parametros: dict = {
@@ -156,6 +167,7 @@ class ClienteOpenAI:
                     raise _erro_amigavel(erro) from None
                 time.sleep(self._esperas_s[tentativa])
             except openai.APIError as erro:
+                self._registrar(erro)
                 raise _erro_amigavel(erro) from None
         if not getattr(resposta, "choices", None):
             raise ErroDoProvedor("O modelo não devolveu resposta.", "outro")

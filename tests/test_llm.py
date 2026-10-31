@@ -224,6 +224,17 @@ def test_400_de_chave_invalida_vira_erro_de_chave_sem_vazar_a_chave():
     assert CHAVE not in str(capturado.value)
 
 
+def test_erro_do_provedor_vai_para_o_log_sem_a_chave(caplog):
+    erro = _erro_http(openai.BadRequestError, 400, f"algo deu errado com {CHAVE}")
+
+    with caplog.at_level("WARNING", logger="analista.llm"), pytest.raises(ErroDoProvedor):
+        _cliente(SdkFalso([erro])).completar([], [])
+
+    assert "400" in caplog.text
+    assert "algo deu errado" in caplog.text
+    assert CHAVE not in caplog.text
+
+
 def test_400_de_chave_com_aspas_sobrando_vira_erro_de_chave():
     # Visto no Gemini: chave colada com aspas no painel de segredos.
     erro = _erro_http(openai.BadRequestError, 400, "Please pass a valid API key")
