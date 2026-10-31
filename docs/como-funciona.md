@@ -12,7 +12,9 @@ opcionais `BANCO_PATH`, `RUNS_PATH`, `AVALIACAO_PATH`, `LIMITE_SESSAO`, `LIMITE_
 do repositório, e devolve uma `Configuracao` imutável. Os caminhos padrão partem de `RAIZ`, calculada a
 partir do próprio arquivo e não do diretório de onde o comando roda, porque o painel e os comandos
 `python -m` rodam de pastas diferentes. A chave tem `repr=False`, então não aparece se alguém imprimir a
-configuração.
+configuração. Endereço e modelo têm espaço e quebra de linha aparados (valor colado em painel de
+segredos costuma trazê-los). `host_do_endereco` devolve só o nome do servidor, sem usuário, caminho ou
+parâmetros, para a avaliação e a verificação do modelo registrarem o endereço sem vazar segredo.
 
 **`dados.py`.** Gera o banco de pedidos com `random.Random(semente)`: mesma semente, mesmo banco. São
 8 mil pedidos em 91 dias (13 semanas completas, de segunda 2026-06-29 a domingo 2026-09-27), para que o
@@ -43,7 +45,12 @@ texto livre e entraria no prompt de toda pergunta. `despachar` transforma tudo o
 (JSON quebrado, argumento faltando, ferramenta inexistente, SQL recusado, erro de sintaxe) em um JSON
 `{"erro", "motivo"}` que volta ao modelo como resultado da ferramenta, para ele corrigir; devolve também
 um dicionário de auditoria para o rastro e a avaliação. Células binárias e números não finitos são
-normalizados, para o resultado ser sempre JSON válido.
+normalizados, para o resultado ser sempre JSON válido. Os dois resultados passam pelos mesmos tetos de
+saída (`MAX_CARACTERES_CELULA`, `MAX_COLUNAS`, `MAX_BYTES_RESULTADO`): texto acima de 200 caracteres
+termina em `…[+N caracteres]`, colunas além de 30 saem, e linhas do fim saem até o JSON caber em 32 KB
+(o que marca `truncado`). O que foi cortado vai em `cortes`, e o JSON do modelo ganha um `aviso`. Sem
+isso, uma consulta curta com `replace` aninhado em centenas de colunas gerava dezenas de MB por chamada.
+A descrição de `executar_sql` sai do teto de linhas em uso (`ferramentas(limite_linhas)`).
 
 **`llm.py`.** O único arquivo que importa `openai`. Define a interface `ModeloLLM` (um método,
 `completar`) e o `ClienteOpenAI`, que fala com qualquer endereço compatível com `chat.completions`.
@@ -52,7 +59,7 @@ erros do SDK viram `ErroDoProvedor` com mensagem em português e sem a chave. Pr
 variam: o código gera um `id` quando a chamada vem sem ele e guarda os campos extras de cada chamada
 (`ChamadaFerramenta.extra`, por exemplo a `thought_signature` do Gemini 3) para devolvê-los intactos no
 histórico. Esse último ponto está implementado e coberto por testes com cliente falso, mas **não foi
-verificado com uma chave real**.
+verificado com uma chave real**. Uma chamada sem `function` é ignorada, como se não viesse.
 
 **`agente.py`.** O laço: manda o prompt do sistema e a pergunta, e a cada passo ou recebe a resposta final
 ou executa as chamadas de ferramenta pedidas (todas, quando vêm várias no mesmo passo) e devolve os
@@ -97,13 +104,17 @@ resposta (colunas, ordem, casas decimais), porque o agente só vê o texto e o a
 `carregar_perguntas` valida os campos e levanta erro citando o id da pergunta torta.
 
 **`comparador.py`.** `resultados_equivalentes` decide se dois resultados são o mesmo: linhas como
-conjunto (ou em ordem, se a pergunta pede ordem), números a 2 casas, texto sem diferença de maiúsculas,
-nome de coluna ignorado e número de colunas exigido. Um resultado truncado pelo teto de linhas nunca é
-equivalente.
+conjunto (ou em ordem, se a pergunta pede ordem), números iguais quando a diferença absoluta é de no
+máximo 0,005, texto sem diferença de maiúsculas, nome de coluna ignorado e número de colunas exigido.
+Sem ordem, as linhas são emparelhadas uma a uma (emparelhamento bipartido), porque com tolerância não dá
+para contar linhas iguais. Um resultado truncado pelo teto de linhas nunca é equivalente.
 
 **`avaliar.py`.** Roda cada pergunta `N` vezes com o agente real e julga a execução (`_julgar`). O banco
 é gerado de novo numa pasta temporária, e o agente trabalha numa cópia descartável; depois de cada
 pergunta compara o `hash_banco` da cópia com o do original, e uma pergunta que alterou o banco reprova.
+Execução que esgota os 6 passos reprova nas perguntas de resultado, mesmo com a última consulta certa
+(as de recusa seguem a regra delas), e resultado cortado pelos tetos de saída (`cortes`) conta como
+incompleto, nunca igual à referência.
 Cada execução concluída vai para `parcial.jsonl`, então uma queda do provedor não joga fora o que já
 rodou (`--retomar` continua, e recusa se o modelo, o prompt, o banco ou as perguntas mudaram). Queda do
 provedor não é contada como erro do agente: a avaliação para (saída 3). O resultado traz modelo, commit
@@ -116,7 +127,11 @@ Streamlit com três abas. **Painel**: KPIs da semana escolhida com a variação 
 por dia e tempo por bairro; só chama funções do núcleo, nenhuma regra de métrica é reescrita ali.
 **Pergunte**: o chat com o agente, a consulta usada e o contador de perguntas; sem chave, o chat fica
 desligado e diz por quê. **Avaliação**: mostra `ultima.json` se existir, com as ressalvas ao lado da
-nota, e um aviso se não existir. Só contam para os limites as perguntas que o modelo respondeu; erro do
-provedor não conta. Nenhum erro chega à tela com texto técnico (`showErrorDetails = "none"` e uma rede
+nota, e um aviso se não existir. Conta nos limites toda pergunta em que o modelo respondeu pelo menos
+um passo, mesmo que o provedor caia depois; falha do provedor antes do primeiro passo não conta. A aba
+avisa que cada pergunta é independente (o chat não tem memória: inclua período e métrica), que as
+perguntas ficam nos logs do servidor (`runs/`) e que o limite por sessão zera ao recarregar a página
+(o teto diário é a trava de verdade). O painel põe a raiz do repositório no `sys.path` antes de
+importar o núcleo, então roda sem instalar o projeto (ADR-0005). Nenhum erro chega à tela com texto técnico (`showErrorDetails = "none"` e uma rede
 de segurança por aba). A conexão com o banco nunca fica em cache, porque o Streamlit atende sessões em
 threads diferentes.

@@ -39,6 +39,10 @@ Cada consulta do modelo passa por cinco camadas antes de chegar ao dado:
 5. a consulta é interrompida depois de 2 s, e texto ou blob com mais de 10 mil bytes dá erro (sem esse
    teto, uma função de texto aplicada a um valor enorme travaria o motor antes do relógio ser lido).
 
+Na volta, o resultado que chega ao modelo (e ao rastro) tem teto de tamanho: textos de até 200
+caracteres, até 30 colunas e 32 KB no total. O que passa disso é cortado com marcador visível e
+listado em `cortes`, para o modelo saber que o resultado está incompleto.
+
 O prompt também manda recusar escrita, mas é só a camada de comportamento: a garantia vem das
 camadas acima. Mais detalhe em [`docs/como-funciona.md`](docs/como-funciona.md); um exemplo de
 relatório, gerado sem modelo e sem chave, em [`docs/exemplo-relatorio.md`](docs/exemplo-relatorio.md).
@@ -79,14 +83,15 @@ Outros comandos úteis:
 | `python -m analista.relatorio --semana 2026-09-21 --sem-modelo` | Relatório da semana (segunda a domingo), com o resumo montado pelo código. Sem `--sem-modelo`, o modelo escreve o parágrafo e a checagem de números o confere. `--saida` grava em `relatorios/` |
 | `python -m analista.verificar_modelo` | Teste de fumaça com a sua chave: confere chave, modelo e tool calling (pedido e volta com o resultado da ferramenta) |
 | `python -m avaliacao.avaliar` | Roda as 25 perguntas, 3 vezes cada, com o modelo real (gasta a cota da chave). `--pausa 2` espaça as chamadas; `--retomar` continua de onde parou |
-| `pytest -q` e `ruff check .` | 430 testes e o estilo; nenhum teste chama um modelo |
+| `pytest -q` e `ruff check .` | A suíte de testes e o estilo; nenhum teste chama um modelo |
 
 A chave fica em `.env` (`LLM_API_KEY`), que o `.gitignore` não deixa subir. O padrão é o Gemini pela
 API compatível com a da OpenAI; para outro provedor basta trocar `LLM_BASE_URL` e `LLM_MODEL`
 (veja [`.env.example`](.env.example)). Para publicar o painel, veja
-[`docs/publicar-painel.md`](docs/publicar-painel.md): a hospedagem precisa instalar o projeto em
-modo editável (é o que `requirements.txt` faz com `-e .[painel]`), porque as pastas `data/` e `runs/`
-e o `.env` são localizados a partir do arquivo do código.
+[`docs/publicar-painel.md`](docs/publicar-painel.md): a hospedagem instala só o `requirements.txt`
+(as dependências, com as mesmas faixas do `pyproject.toml`), e o painel põe a raiz do repositório no
+`sys.path` antes de importar o código, então não precisa instalar o projeto. Para desenvolver, use
+`pip install -e ".[dev,painel]"`, como acima.
 
 ## Os dados
 
@@ -141,9 +146,12 @@ Cada pergunta roda 3 vezes; o relatório traz a **média** e o **pior caso** (a 
 
 - **Acerto de uma pergunta com resposta numérica** é o resultado da **última consulta bem-sucedida** do
   agente ser igual ao de uma consulta de referência escrita à mão. Linhas são comparadas como
-  conjunto (ou na ordem, quando a pergunta pede ordem), números a 2 casas, texto sem diferença de
-  maiúsculas; o nome das colunas não conta, o número de colunas sim. Não se avalia o texto da resposta
-  nem o SQL.
+  conjunto (ou na ordem, quando a pergunta pede ordem), números iguais quando a diferença é de no
+  máximo 0,005, texto sem diferença de maiúsculas; o nome das colunas não conta, o número de colunas
+  sim. Não se avalia o texto da resposta nem o SQL.
+- **Execução que esgota os 6 passos sem responder conta como erro** nas perguntas de resultado, mesmo
+  que a última consulta esteja certa: o usuário não recebeu resposta. Resultado truncado pelo teto de
+  linhas ou cortado pelo teto de tamanho também conta como erro (faltam dados para comparar).
 - **As 22 perguntas objetivas e as 3 ambíguas são reportadas separadamente.** O comparador exige o
   mesmo formato de colunas. A pergunta ambígua passa se o resultado bate com uma das interpretações de
   referência, ou se nenhuma consulta foi bem-sucedida e o texto da resposta contém um `?`. Outras
@@ -174,8 +182,14 @@ aparece na aba Avaliação do painel.
   algarismos.
 - **O teto diário do painel é aproximado**: com várias sessões ao mesmo tempo, uma contagem pode se perder.
   Ele zera na meia-noite do relógio do servidor, que em hospedagem em UTC é às 21h de Brasília.
-- **Limite do provedor (erro 429):** o cliente tenta de novo após 2, 4 e 8 s, então uma pergunta pode
-  ficar presa por até cerca de 14 s antes de mostrar o aviso.
+- **Limite do provedor (erro 429):** o cliente tenta de novo após 2, 4 e 8 s, cerca de 14 s por
+  chamada ao modelo (até 6 por pergunta), antes de mostrar o aviso. Uma pergunta em que o modelo já
+  respondeu pelo menos um passo conta no limite mesmo que o provedor caia depois.
+- **O chat não tem memória.** Cada pergunta vai sozinha ao agente; ele não vê as anteriores. O prompt
+  permite que ele pergunte o que falta, mas a resposta do usuário chega como pergunta nova, sem o
+  contexto. Por isso o painel pede para incluir período e métrica em cada pergunta.
+- **As perguntas ficam nos logs do servidor** (`runs/`, um JSONL por pergunta), para auditoria. O
+  limite de 10 por sessão volta a zero ao recarregar a página; quem segura o uso é o teto diário.
 - **Erro fixo do provedor numa pergunta** (por exemplo, o provedor recusa sempre aquele pedido): a
   avaliação para ali com saída 3, e `--retomar` para no mesmo ponto até a causa ser resolvida.
 - **Gemini 3 e a assinatura de raciocínio.** O código devolve intactos os campos próprios do provedor
