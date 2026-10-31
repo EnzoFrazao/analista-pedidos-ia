@@ -11,6 +11,10 @@
 - Painel redesenhado (tema claro, cartões de KPI com miniatura, gráficos com valor na barra, resumo da
   semana, perguntas sugeridas), a partir da skill de UI/UX e de painéis de exemplo (Streamlit
   `st.metric`, Evidence, Posit querychat, Metabase).
+- Com os Secrets corrigidos pelo mantenedor, o chat publicado respondeu "Quantos pedidos foram
+  cancelados?" (473) e recusou o pedido de apagar dados. Em seguida o painel foi reorganizado em torno
+  do chat: aba Pergunte primeiro, campo em destaque, guia de uso, sugestões e conversa com a resposta
+  mais nova no topo.
 
 ## 2026-10-31 — primeira avaliação com modelo real
 

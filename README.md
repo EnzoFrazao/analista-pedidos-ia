@@ -225,7 +225,7 @@ texto não foi medida.
 analista/     núcleo (sem Streamlit): config, dados, sql_seguro, ferramentas, llm, agente, rastro,
               relatorio, formatacao, limites, verificar_modelo
 avaliacao/    perguntas.yaml, perguntas.py, comparador.py, avaliar.py, relatorio_md.py, resultados/
-app/          painel.py (Streamlit: abas Painel, Pergunte e Avaliação)
+app/          painel.py (Streamlit: abas Pergunte, Painel e Avaliação)
 tests/        pytest; o modelo é sempre falso
 specs/        memória técnica (contrato, arquitetura implementada, evidências de teste)
 docs/         como-funciona.md, publicar-painel.md, exemplo-relatorio.md

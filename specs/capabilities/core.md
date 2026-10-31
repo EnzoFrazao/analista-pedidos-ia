@@ -56,7 +56,8 @@ gerados pelo modelo. Envio do relatório por mensageria também ficou de fora.
   percentuais); o modelo só redige o parágrafo, e um parágrafo com número em algarismos que não está nos
   KPIs é recusado. Sem modelo, recusado duas vezes ou com o provedor fora, o resumo é montado pelo código
   e o relatório diz qual dos dois escreveu.
-- O painel tem as abas Painel, Pergunte e Avaliação. Sem chave, o chat fica desligado e as outras abas
+- O painel tem as abas Pergunte (a primeira, com o campo de pergunta em destaque), Painel e Avaliação.
+  Sem chave, o chat fica desligado e as outras abas
   funcionam. Conta nos limites a pergunta em que o modelo respondeu pelo menos um passo, mesmo que o
   provedor caia depois; falha antes do primeiro passo não conta. A aba Pergunte avisa que cada pergunta
   é independente (sem memória do chat), que as perguntas ficam nos logs do servidor e que o limite por
@@ -81,8 +82,8 @@ gerados pelo modelo. Envio do relatório por mensageria também ficou de fora.
 ## Estado atual e lacunas
 
 Implementada, coberta por testes com modelo falso e medida uma vez com o modelo real (ver abaixo);
-`implementation_status` continua `implemented`: o painel está publicado, mas o chat publicado ainda não
-respondeu uma pergunta (a chave cadastrada no serviço foi recusada). O contrato continua em `draft`
+`implementation_status` continua `implemented`: o painel está publicado e o chat publicado respondeu uma
+pergunta objetiva e recusou um pedido de escrita em 2026-10-31. O contrato continua em `draft`
 até o mantenedor aprovar o texto. Lacunas conhecidas:
 
 - O modelo padrão (`gemini-3.5-flash-lite`) e a volta do Gemini 3 com `thought_signature` funcionaram
@@ -92,8 +93,8 @@ até o mantenedor aprovar o texto. Lacunas conhecidas:
   e a medição estrita as conta como erro (0 de 3). A nota das objetivas é 22 de 22 em perguntas escritas
   pelo próprio autor.
 - Publicado em 2026-10-31: repositório público e painel em `https://pedidoai.streamlit.app/`
-  (Streamlit Community Cloud). O build funcionou; o chat publicado depende de corrigir a chave nos
-  Secrets do serviço (`P-004`).
+  (Streamlit Community Cloud). O build e o chat funcionaram; o plano gratuito dorme depois de umas 12 h
+  sem acesso (`P-004`).
 - O teto diário é aproximado e usa a data do servidor (21h de Brasília em hospedagem em UTC); o contador
   fica em arquivo, que pode não persistir entre reinícios.
 - Um erro fixo do provedor numa pergunta faz `--retomar` parar sempre no mesmo ponto.

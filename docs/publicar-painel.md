@@ -21,7 +21,11 @@ Space no perfil, é uma alternativa descrita mais adiante (não foi feito).
 3. O nome do endereço (`<nome>.streamlit.app`) muda em **Settings, General**; o endereço antigo deixa de
    funcionar. Cada push no `main` reimplanta o painel em cerca de um minuto.
 4. Se o chat mostrar "recusou a chave" ou "não aceitou o nome do modelo", o segredo correspondente está errado.
-   O log do serviço (**Manage app**) traz o status e a resposta do provedor, sem a chave.
+   O log do serviço (**Manage app**) traz o status e a resposta do provedor, sem a chave. Foi o que
+   aconteceu na primeira publicação (aspas sobrando); com os Secrets corrigidos o chat respondeu uma
+   pergunta objetiva e recusou um pedido de apagar dados.
+5. O plano gratuito põe o painel para dormir depois de cerca de 12 h sem acesso; o primeiro visitante vê
+   uma tela de "acordar" antes de abrir.
 
 ## Alternativa: Hugging Face Spaces
 

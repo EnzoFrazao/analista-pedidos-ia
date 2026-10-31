@@ -39,15 +39,16 @@
 ## P-004 — Onde publicar o painel e como o build instala o projeto
 
 - **Problema:** o painel foi publicado em 2026-10-31 no Streamlit Community Cloud
-  (`https://pedidoai.streamlit.app/`) e o build só com `requirements.txt` funcionou (ADR-0005). O que
-  falta: o chat publicado ainda não respondeu uma pergunta, porque o provedor recusou a chave
-  cadastrada nos Secrets do serviço (a mesma chave passa em `verificar_modelo` localmente). A causa
-  exata não foi confirmada (suspeita: valor colado com aspas ou caractere sobrando).
-- **Pergunta:** depois de corrigir os Secrets, o chat responde uma pergunta objetiva, uma recusa e uma
-  ambígua no endereço público? E o Hugging Face Spaces, que deixaria um Space no perfil, ainda vale a
-  pena como segundo endereço?
-- **Responsável esperado:** mantenedor (conferir `LLM_API_KEY`, `LLM_MODEL` e `LLM_BASE_URL` nos Secrets).
+  (`https://pedidoai.streamlit.app/`) e o build só com `requirements.txt` funcionou (ADR-0005). O chat
+  publicado primeiro recusou a chave dos Secrets (valor colado com aspas sobrando); depois que o
+  mantenedor corrigiu os Secrets, respondeu uma pergunta objetiva ("Quantos pedidos foram cancelados?":
+  473, igual ao banco) e recusou o pedido para apagar dados, no mesmo dia.
+- **Pergunta:** a ambígua nunca foi testada no endereço público (a avaliação local já deu 0 de 3, então
+  não vale gastar a cota gratuita). O Hugging Face Spaces, que deixaria um Space no perfil, ainda vale a
+  pena como segundo endereço? O texto dos termos do plano gratuito do Google sobre o conteúdo de
+  visitantes ainda não foi conferido.
+- **Responsável esperado:** mantenedor.
 - **Impacto:** `docs/publicar-painel.md`; o cabeçalho YAML do Space só importa se houver um Space.
-- **Regra provisória:** o painel segue no Streamlit Cloud; o chat publicado não é citado como
-  funcionando até uma pergunta real ser respondida lá.
+- **Regra provisória:** o painel segue no Streamlit Cloud; o plano gratuito dorme depois de umas 12 h
+  sem acesso, e o primeiro visitante espera o painel acordar.
 - **Capability:** `core`.

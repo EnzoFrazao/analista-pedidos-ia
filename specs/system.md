@@ -24,7 +24,7 @@ mesmas faixas de `dependencies` mais o extra `painel`, sem instalar o projeto (A
 | `python -m analista.relatorio --semana AAAA-MM-DD [--sem-modelo] [--saida]` | `analista/relatorio.py` | Relatório semanal em Markdown |
 | `python -m analista.verificar_modelo` | `analista/verificar_modelo.py` | Teste de fumaça com a chave: chave, modelo, tool calling em dois turnos |
 | `python -m avaliacao.avaliar [--repeticoes N] [--pausa S] [--categoria C] [--retomar \| --recomecar]` | `avaliacao/avaliar.py` | Avaliação com o modelo real |
-| `streamlit run app/painel.py` | `app/painel.py` | Painel com as abas Painel, Pergunte e Avaliação |
+| `streamlit run app/painel.py` | `app/painel.py` | Painel com as abas Pergunte, Painel e Avaliação |
 
 ## Fronteiras e fluxo
 
@@ -102,12 +102,16 @@ aparados (o Gemini responde 400 a chave ou modelo com aspas). Os caminhos padrã
 - Uma avaliação completa com provedor real foi feita em 2026-10-31 (`gemini-3.5-flash-lite`, plano
   gratuito, commit `758b782`); `verificar_modelo` confirmou a volta com `thought_signature`.
 - Publicação em 2026-10-31: repositório público `EnzoFrazao/analista-pedidos-ia` e painel no Streamlit
-  Community Cloud, com o build só de `requirements.txt` funcionando (ADR-0005). As abas Painel e
-  Avaliação foram conferidas no endereço público. **O chat publicado ainda não respondeu uma
-  pergunta:** o provedor recusou a chave cadastrada nos Secrets do serviço (a mesma chave passa em
-  `verificar_modelo` na máquina do mantenedor); o painel agora diz qual segredo conferir.
-- Interface do painel: tema claro em `.streamlit/config.toml`; KPIs em cartões com miniatura da
-  evolução semanal; gráficos Altair com valor na barra (âmbar = bairro mais lento que a média da
-  semana); resumo da semana em frases tiradas dos mesmos números; chat com seis perguntas sugeridas
-  (cinco da avaliação e uma recusa). O disparo do clique usa `st.session_state["pergunta_pendente"]`.
+  Community Cloud, com o build só de `requirements.txt` funcionando (ADR-0005). As três abas foram
+  conferidas no endereço público. O chat publicado recusou a chave dos Secrets até o mantenedor
+  corrigir o valor (aspas sobrando); depois respondeu a pergunta objetiva e recusou o pedido de
+  apagar dados (verificado em 2026-10-31).
+- Interface do painel: tema claro em `.streamlit/config.toml`; **a aba Pergunte é a primeira e a
+  que abre**: título, um quadro com os três passos de uso, o campo de pergunta com borda azul (CSS em
+  `ESTILO`), o contador da sessão, seis perguntas sugeridas (cinco da avaliação e uma recusa; em
+  quadro enquanto a conversa está vazia, depois recolhidas no expansor "Perguntas sugeridas") e um
+  expansor "O que dá para perguntar e como o agente responde". A resposta mais nova fica no topo da
+  conversa. A aba Painel traz KPIs em cartões com miniatura da evolução semanal, gráficos Altair com
+  valor na barra (âmbar = bairro mais lento que a média da semana) e o resumo da semana em frases
+  tiradas dos mesmos números. O clique numa sugestão usa `st.session_state["pergunta_pendente"]`.
 - O erro do provedor vai para o log do servidor (status e corpo sem a chave), nunca para a tela.
