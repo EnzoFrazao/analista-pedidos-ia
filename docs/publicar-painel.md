@@ -7,13 +7,14 @@ um Space no perfil; o Streamlit Community Cloud serve igual (pule o cabeçalho Y
 
 1. Crie uma chave gratuita do provedor (o padrão é o Google AI Studio), coloque em `.env` como
    `LLM_API_KEY` e rode `python -m analista.verificar_modelo`. Ele confere chave, modelo e tool calling,
-   inclusive a volta com o resultado da ferramenta que o Gemini 3 exige (ainda não verificada).
-2. Rode `python -m avaliacao.avaliar --pausa 2` (se o plano gratuito tiver limite por minuto, a pausa
-   ajuda; `--retomar` continua se o provedor cair). Se quiser que a aba Avaliação do painel publicado
-   mostre o resultado, **versione** `avaliacao/resultados/ultima.json` e `ultima.md` (o Git ignora
+   inclusive a volta com o resultado da ferramenta que o Gemini 3 exige (passou em 2026-10-31 com
+   `gemini-3.5-flash-lite`; outro modelo precisa do mesmo teste).
+2. A avaliação completa já rodou em 2026-10-31 e o resultado está versionado em
+   `avaliacao/resultados/ultima.json` e `ultima.md`, que a aba Avaliação do painel publicado lê. Para
+   refazer, rode `python -m avaliacao.avaliar --recomecar` (ela espera 15, 30, 60 e 60 s quando o
+   provedor responde 429; `--retomar` continua uma execução interrompida do mesmo commit). O Git ignora
    só `rastros/`, `parcial.jsonl`, os temporários `*.tmp` e os resultados filtrados por categoria,
-   `ultima-<categoria>.*`, que não valem como nota geral). Sem o arquivo, a aba
-   diz que a avaliação ainda não foi executada. Só publique números que estejam nesse arquivo.
+   `ultima-<categoria>.*`, que não valem como nota geral. Só publique números que estejam nesse arquivo.
 3. Confira que `.env` e `data/` não estão no que vai subir (`git status` e `git ls-files`).
 
 ## Criar o Space
