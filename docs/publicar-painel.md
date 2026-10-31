@@ -1,7 +1,29 @@
 # Publicar o painel
 
-Passos para publicar o painel. **Nada aqui foi feito ainda.** Este guia descreve o Hugging Face Spaces, que também deixa
-um Space no perfil; o Streamlit Community Cloud serve igual (pule o cabeçalho YAML e o passo do Space).
+Passos para publicar o painel. O painel está no ar desde 2026-10-31 no **Streamlit Community Cloud**
+(<https://pedidoai.streamlit.app/>); o caminho usado está logo abaixo. O Hugging Face Spaces, que também deixa um
+Space no perfil, é uma alternativa descrita mais adiante (não foi feito).
+
+## O que foi feito no Streamlit Community Cloud
+
+1. Em <https://share.streamlit.io>, **Create app** a partir do repositório
+   `EnzoFrazao/analista-pedidos-ia`, branch `main`, arquivo principal `app/painel.py`. O build instala só o
+   `requirements.txt` e abriu o painel sem instalar o projeto (ADR-0005).
+2. Em **Settings, Secrets**, cadastre no formato TOML, **uma** linha por variável e **um** par de aspas por
+   valor (aspas sobrando em volta de `LLM_API_KEY` ou `LLM_MODEL` fazem o Gemini responder 400):
+
+   ```toml
+   LLM_API_KEY = "cole-a-chave-aqui"
+   LLM_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+   LLM_MODEL = "gemini-3.5-flash-lite"
+   ```
+
+3. O nome do endereço (`<nome>.streamlit.app`) muda em **Settings, General**; o endereço antigo deixa de
+   funcionar. Cada push no `main` reimplanta o painel em cerca de um minuto.
+4. Se o chat mostrar "recusou a chave" ou "não aceitou o nome do modelo", o segredo correspondente está errado.
+   O log do serviço (**Manage app**) traz o status e a resposta do provedor, sem a chave.
+
+## Alternativa: Hugging Face Spaces
 
 ## Antes de publicar
 
@@ -54,8 +76,8 @@ antes de importar `analista` e `avaliacao`, então o código e `RAIZ` (que local
 `.env`) vêm sempre da cópia do repositório no serviço (ADR-0005). Assim não importa se o serviço
 instala o `requirements.txt` antes ou depois de copiar o resto do código.
 
-**Ponto a confirmar no primeiro build:** isto foi conferido localmente (o painel abre com o Python sem
-o pacote instalado), mas não num build do Hugging Face nem do Streamlit Community Cloud.
+Isto foi conferido localmente (o painel abre com o Python sem o pacote instalado) e num build real do
+Streamlit Community Cloud. Num Space do Hugging Face ainda não foi testado.
 
 ## O que esperar depois de publicado
 

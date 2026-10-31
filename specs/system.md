@@ -1,13 +1,14 @@
 # Sistema implementado
 
-**Última verificação:** 2026-10-30  
-**Referência:** `working-tree`
+**Última verificação:** 2026-10-31  
+**Referência:** `aceaad3` (`main`)
 
 ## Finalidade e unidade executável
 
 Um agente de tool calling que responde perguntas sobre pedidos sintéticos de um restaurante fictício,
-mais um relatório semanal, um executor de avaliação e um painel Streamlit. Não há serviço em execução
-nem publicação: tudo roda localmente a partir do repositório. Contrato em `capabilities/core.md`.
+mais um relatório semanal, um executor de avaliação e um painel Streamlit. O painel roda publicado no
+Streamlit Community Cloud (`https://pedidoai.streamlit.app/`), construído a partir do `main` do
+repositório público; o resto roda localmente. Contrato em `capabilities/core.md`.
 
 ## Stack e entrypoints
 
@@ -77,7 +78,8 @@ importa.
 Integração externa: um provedor de modelo por endereço compatível com `chat.completions` da OpenAI
 (padrão: Gemini, `gemini-3.5-flash-lite`), configurado por `LLM_BASE_URL`, `LLM_MODEL` e `LLM_API_KEY`.
 Opcionais: `BANCO_PATH`, `RUNS_PATH`, `AVALIACAO_PATH` (só o painel), `LIMITE_SESSAO` (10) e `LIMITE_DIA`
-(200). `LLM_BASE_URL` e `LLM_MODEL` têm espaço e quebra de linha aparados. Os caminhos padrão partem de
+(200). `LLM_API_KEY`, `LLM_BASE_URL` e `LLM_MODEL` têm espaço, quebra de linha e aspas sobrando em volta
+aparados (o Gemini responde 400 a chave ou modelo com aspas). Os caminhos padrão partem de
 `RAIZ`; o painel põe a raiz do repositório na frente do `sys.path` antes de importar o núcleo, então
 `RAIZ` é o repositório sem instalação editável (ADR-0005). CI em `.github/workflows/ci.yml`
 (`permissions: contents: read`): `ruff check .` e `pytest -q` com Python 3.12.
@@ -98,6 +100,14 @@ Opcionais: `BANCO_PATH`, `RUNS_PATH`, `AVALIACAO_PATH` (só o painel), `LIMITE_S
   mesmo que o provedor caia depois. O limite por sessão zera ao recarregar a página; o teto diário é a
   trava efetiva. As perguntas ficam em `runs/*.jsonl` no servidor, e o painel avisa isso.
 - Uma avaliação completa com provedor real foi feita em 2026-10-31 (`gemini-3.5-flash-lite`, plano
-  gratuito, commit `758b782`); `verificar_modelo` confirmou a volta com `thought_signature`. Painel e
-  chat nunca rodaram publicados.
-- Nada foi publicado: sem remoto Git, Space nem deploy.
+  gratuito, commit `758b782`); `verificar_modelo` confirmou a volta com `thought_signature`.
+- Publicação em 2026-10-31: repositório público `EnzoFrazao/analista-pedidos-ia` e painel no Streamlit
+  Community Cloud, com o build só de `requirements.txt` funcionando (ADR-0005). As abas Painel e
+  Avaliação foram conferidas no endereço público. **O chat publicado ainda não respondeu uma
+  pergunta:** o provedor recusou a chave cadastrada nos Secrets do serviço (a mesma chave passa em
+  `verificar_modelo` na máquina do mantenedor); o painel agora diz qual segredo conferir.
+- Interface do painel: tema claro em `.streamlit/config.toml`; KPIs em cartões com miniatura da
+  evolução semanal; gráficos Altair com valor na barra (âmbar = bairro mais lento que a média da
+  semana); resumo da semana em frases tiradas dos mesmos números; chat com seis perguntas sugeridas
+  (cinco da avaliação e uma recusa). O disparo do clique usa `st.session_state["pergunta_pendente"]`.
+- O erro do provedor vai para o log do servidor (status e corpo sem a chave), nunca para a tela.

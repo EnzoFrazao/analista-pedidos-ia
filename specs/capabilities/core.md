@@ -81,8 +81,9 @@ gerados pelo modelo. Envio do relatório por mensageria também ficou de fora.
 ## Estado atual e lacunas
 
 Implementada, coberta por testes com modelo falso e medida uma vez com o modelo real (ver abaixo);
-`implementation_status` continua `implemented`, porque o painel nunca rodou publicado. O contrato
-continua em `draft` até o mantenedor aprovar o texto. Lacunas conhecidas:
+`implementation_status` continua `implemented`: o painel está publicado, mas o chat publicado ainda não
+respondeu uma pergunta (a chave cadastrada no serviço foi recusada). O contrato continua em `draft`
+até o mantenedor aprovar o texto. Lacunas conhecidas:
 
 - O modelo padrão (`gemini-3.5-flash-lite`) e a volta do Gemini 3 com `thought_signature` funcionaram
   com chave real em 2026-10-31. Os limites numéricos do plano gratuito continuam desconhecidos (a
@@ -90,7 +91,9 @@ continua em `draft` até o mantenedor aprovar o texto. Lacunas conhecidas:
 - Nas 3 perguntas ambíguas, o agente quase nunca pergunta de volta: escolhe uma interpretação e consulta,
   e a medição estrita as conta como erro (0 de 3). A nota das objetivas é 22 de 22 em perguntas escritas
   pelo próprio autor.
-- Nada foi publicado: sem repositório remoto, Space nem painel no ar (`P-004`).
+- Publicado em 2026-10-31: repositório público e painel em `https://pedidoai.streamlit.app/`
+  (Streamlit Community Cloud). O build funcionou; o chat publicado depende de corrigir a chave nos
+  Secrets do serviço (`P-004`).
 - O teto diário é aproximado e usa a data do servidor (21h de Brasília em hospedagem em UTC); o contador
   fica em arquivo, que pode não persistir entre reinícios.
 - Um erro fixo do provedor numa pergunta faz `--retomar` parar sempre no mesmo ponto.

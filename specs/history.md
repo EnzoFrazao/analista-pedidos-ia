@@ -1,5 +1,17 @@
 # Marcos do projeto
 
+## 2026-10-31 — publicação e redesenho do painel
+
+- Repositório público (MIT) e painel no Streamlit Community Cloud. A primeira CI falhou
+  (`ModuleNotFoundError: tests` com `pytest` puro) e foi corrigida com `pythonpath = ["."]`.
+- O chat publicado devolveu erro 400 do provedor: o classificador não reconhecia "Please pass a valid API
+  key" (chave com aspas) nem "unexpected model name format" (modelo com aspas). As duas mensagens
+  passaram a apontar o segredo certo, a resposta do provedor vai ao log sem a chave e aspas sobrando
+  em volta da chave, do modelo e do endereço são tiradas.
+- Painel redesenhado (tema claro, cartões de KPI com miniatura, gráficos com valor na barra, resumo da
+  semana, perguntas sugeridas), a partir da skill de UI/UX e de painéis de exemplo (Streamlit
+  `st.metric`, Evidence, Posit querychat, Metabase).
+
 ## 2026-10-31 — primeira avaliação com modelo real
 
 - `verificar_modelo` passou com chave real do Gemini (plano gratuito), e a avaliação de 75 execuções

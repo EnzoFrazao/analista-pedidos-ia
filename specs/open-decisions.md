@@ -38,14 +38,16 @@
 
 ## P-004 — Onde publicar o painel e como o build instala o projeto
 
-- **Problema:** o desenho aceita Hugging Face Spaces ou Streamlit Cloud. O painel não depende mais de
-  instalação editável (ADR-0005): o `requirements.txt` lista só as dependências e o painel põe a raiz
-  do repositório no `sys.path`. Isso foi conferido localmente, mas nenhum build num serviço real foi
-  feito.
-- **Pergunta:** qual serviço, e o build com o `requirements.txt` atual funciona nele?
-- **Responsável esperado:** mantenedor (criar o serviço, cadastrar o segredo e conferir o primeiro build).
-- **Impacto:** `docs/publicar-painel.md` e, se o build falhar, um `Dockerfile` ou outro serviço.
-  O cabeçalho YAML do Space (`python_version: "3.12"`) também precisa ser conferido no primeiro build.
-- **Regra provisória:** documentar o Hugging Face Spaces, que também deixa o Space no perfil do autor, com
-  o ponto do build marcado como não testado. Nada é publicado sem o OK do mantenedor.
+- **Problema:** o painel foi publicado em 2026-10-31 no Streamlit Community Cloud
+  (`https://pedidoai.streamlit.app/`) e o build só com `requirements.txt` funcionou (ADR-0005). O que
+  falta: o chat publicado ainda não respondeu uma pergunta, porque o provedor recusou a chave
+  cadastrada nos Secrets do serviço (a mesma chave passa em `verificar_modelo` localmente). A causa
+  exata não foi confirmada (suspeita: valor colado com aspas ou caractere sobrando).
+- **Pergunta:** depois de corrigir os Secrets, o chat responde uma pergunta objetiva, uma recusa e uma
+  ambígua no endereço público? E o Hugging Face Spaces, que deixaria um Space no perfil, ainda vale a
+  pena como segundo endereço?
+- **Responsável esperado:** mantenedor (conferir `LLM_API_KEY`, `LLM_MODEL` e `LLM_BASE_URL` nos Secrets).
+- **Impacto:** `docs/publicar-painel.md`; o cabeçalho YAML do Space só importa se houver um Space.
+- **Regra provisória:** o painel segue no Streamlit Cloud; o chat publicado não é citado como
+  funcionando até uma pergunta real ser respondida lá.
 - **Capability:** `core`.

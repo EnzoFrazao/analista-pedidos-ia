@@ -60,6 +60,10 @@ resultados e passa nas recusas). O painel é testado com o `AppTest` do Streamli
 - O texto de `DEFINICOES` e o SQL das consultas do relatório são duas escritas da mesma regra, protegidas
   apenas pelo teste que compara os KPIs com consultas independentes (`test_kpis_batem_com_consulta_direta`).
 - O texto em inglês de erros do SQLite é usado por um teste de sintaxe de `tests/test_ferramentas.py`.
-- Não há teste de fumaça do painel publicado nem do build em Hugging Face Spaces. A execução sem
-  instalação editável foi conferida à mão (ADR-0005), e o teste de `sys.path` só olha o código-fonte.
+- Não há teste de fumaça do painel publicado. O build no Streamlit Community Cloud foi conferido à mão
+  em 2026-10-31 (Painel e Avaliação abriram com os mesmos números do teste local; o chat não
+  respondeu, ver `P-004`), e o teste de `sys.path` só olha o código-fonte.
+- As perguntas sugeridas do chat são conferidas contra `avaliacao/perguntas.yaml`
+  (`test_perguntas_sugeridas_saem_do_conjunto_da_avaliacao`); o visual (cores, cartões, gráficos) só
+  foi visto no navegador, em 800 px e 375 px, sem teste automático.
 - O contador do teto diário não é testado com processos concorrentes de verdade.

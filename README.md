@@ -1,6 +1,10 @@
 # Analista de pedidos com IA
 
 [![CI](https://github.com/EnzoFrazao/analista-pedidos-ia/actions/workflows/ci.yml/badge.svg)](https://github.com/EnzoFrazao/analista-pedidos-ia/actions/workflows/ci.yml)
+[![Painel no ar](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pedidoai.streamlit.app/)
+
+**Painel no ar:** <https://pedidoai.streamlit.app/>. É o plano gratuito do Streamlit: se ninguém abriu
+há algumas horas, a página pede um clique para acordar. O chat tem limite de 10 perguntas por sessão.
 
 > **An LLM agent that answers business questions, in Portuguese, about a restaurant's orders.**
 > It writes read-only SQL through two tools, in a tool-calling loop of plain Python (no agent framework).
