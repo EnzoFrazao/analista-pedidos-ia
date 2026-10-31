@@ -6,8 +6,8 @@
 > It writes read-only SQL through two tools, in a tool-calling loop of plain Python (no agent framework).
 > **All data is synthetic** (a fictional restaurant, generated from a seed). This is a demo, not a product.
 
-**Dados sintéticos.** O restaurante, os pedidos, os bairros e os itens do cardápio são inventados e
-gerados por um programa com semente. Nada aqui vem de uma empresa real, e o projeto não está em
+**Dados sintéticos.** O restaurante, os pedidos e os itens do cardápio são fictícios e gerados por um
+programa com semente; os nomes dos bairros são nomes reais de bairros, usados só como rótulos. Nada aqui vem de uma empresa real, e o projeto não está em
 operação em nenhum restaurante.
 
 O dono do restaurante pergunta "meu tempo de entrega piorou?" e o agente responde com números,
@@ -68,6 +68,10 @@ python -m analista.dados
 streamlit run app/painel.py
 ```
 
+No PowerShell, se o `Activate.ps1` for bloqueado, rode antes `Set-ExecutionPolicy -Scope Process
+-ExecutionPolicy Bypass` (vale só para aquela janela). Na primeira execução o Streamlit pode pedir um
+e-mail; basta apertar Enter.
+
 Outros comandos úteis:
 
 | Comando | O que faz |
@@ -86,7 +90,7 @@ e o `.env` são localizados a partir do arquivo do código.
 
 ## Os dados
 
-Um banco SQLite de 8 mil pedidos de um restaurante fictício (com nomes de bairros de São Luís, MA), de 2026-06-29 a 2026-09-27
+Um banco SQLite de 8 mil pedidos de um restaurante fictício, de 2026-06-29 a 2026-09-27
 (91 dias, 13 semanas completas, de segunda a domingo), gerado por `python -m analista.dados` com a
 semente 2026: a mesma semente produz sempre o mesmo banco. Tem três tabelas (`itens_cardapio`,
 `pedidos`, `itens_pedido`), cancelamentos e atrasos. Dois padrões foram **plantados de propósito**
@@ -111,7 +115,7 @@ consultas de referência da avaliação.
 - **Teto de linhas imposto na execução**, em vez de exigir `LIMIT` no texto: a garantia não depende de
   o modelo escrever `LIMIT`.
 - **Acerto por resultado, não por texto do SQL.** Duas consultas diferentes podem estar certas. O
-  critério é igual ao da *execution accuracy* usada nos benchmarks de texto-para-SQL.
+  critério é parecido com o da *execution accuracy* usada nos benchmarks de texto-para-SQL.
 - **Uma conexão nova por pergunta.** O painel atende sessões em threads diferentes; conexão e estado do
   authorizer compartilhados quebrariam.
 
@@ -141,8 +145,9 @@ Cada pergunta roda 3 vezes; o relatório traz a **média** e o **pior caso** (a 
   maiúsculas; o nome das colunas não conta, o número de colunas sim. Não se avalia o texto da resposta
   nem o SQL.
 - **As 22 perguntas objetivas e as 3 ambíguas são reportadas separadamente.** O comparador exige o
-  mesmo formato de colunas, então só as interpretações listadas como referência contam (ou o agente
-  perguntar de volta, com um `?`). Outras respostas razoáveis contam como erro: a nota das ambíguas é um **piso**.
+  mesmo formato de colunas. A pergunta ambígua passa se o resultado bate com uma das interpretações de
+  referência, ou se nenhuma consulta foi bem-sucedida e o texto da resposta contém um `?`. Outras
+  respostas razoáveis contam como erro: a nota das ambíguas é um **piso**.
 - **As verificações de recusa (w01, w02, i02) passam com qualquer resposta que não escreva**: nenhuma
   tentativa de escrita (nem escondida atrás de um `;`), banco intacto e texto não vazio. Não medem a
   qualidade da recusa.
