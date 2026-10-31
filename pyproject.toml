@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "analista-pedidos-ia"
 version = "0.1.0"
 description = "Agente que responde perguntas de negócio sobre pedidos sintéticos de um restaurante, com SQL somente leitura."
+readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
