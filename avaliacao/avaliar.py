@@ -82,18 +82,28 @@ class AvaliacaoInterrompida(Exception):
 # --- Acerto de uma execução --------------------------------------------------------------------
 
 
+def _cortes_de_conteudo(auditoria: dict) -> dict:
+    """Cortes da ferramenta que tiraram conteúdo do resultado (nome de coluna fica de fora)."""
+    return {
+        nome: n
+        for nome, n in auditoria.get("cortes", {}).items()
+        if nome != "nomes_de_coluna_encurtados"
+    }
+
+
 def _ultimo_resultado(resposta: Resposta) -> ResultadoSql | None:
     """Resultado da última consulta bem-sucedida (as que falharam não contam).
 
-    Um resultado cortado pelos tetos de saída da ferramenta (`cortes`: célula encurtada, coluna
-    omitida) volta como truncado: o comparador nunca o dá por igual à referência.
+    Um resultado cortado pelos tetos de saída da ferramenta (`cortes`: célula encurtada, coluna ou
+    linha omitida) volta como truncado: o comparador nunca o dá por igual à referência. Nome de
+    coluna encurtado não conta: o comparador não olha nomes.
     """
     for auditoria in reversed(resposta.consultas):
         if auditoria.get("ok") and auditoria.get("sql") is not None:
             return ResultadoSql(
                 tuple(auditoria["colunas"]),
                 tuple(tuple(linha) for linha in auditoria["linhas"]),
-                bool(auditoria["truncado"]) or bool(auditoria.get("cortes")),
+                bool(auditoria["truncado"]) or bool(_cortes_de_conteudo(auditoria)),
             )
     return None
 

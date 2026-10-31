@@ -31,8 +31,8 @@ com `mode=ro` e `PRAGMA query_only=ON`, então o motor recusa escrita sem depend
 `executar_consulta` aplica o resto: `_validar_texto` aceita uma única instrução começando por
 `SELECT` ou `WITH` (um `;` ou comentário no fim, comuns na saída de modelos, não atrapalham);
 `_Vigia.autorizar` é o *authorizer* que o SQLite chama para cada ação e que só aprova `SELECT`, a
-leitura das três tabelas e as funções de `FUNCOES_PERMITIDAS`; `fetchmany(limite_linhas + 1)` impõe o
-teto de 50 linhas e marca `truncado`; um *progress handler* corta a consulta após 2 s; e dois limites do
+leitura das três tabelas e as funções de `FUNCOES_PERMITIDAS`; a leitura linha a linha impõe o
+teto de 50 linhas e de cerca de 1 MB (`LIMITE_BYTES`) e marca `truncado`; um *progress handler* corta a consulta após 2 s; e dois limites do
 SQLite (`SQLITE_LIMIT_LENGTH` e o tamanho do padrão de `LIKE`) impedem que uma única função de texto
 gaste tempo dentro de um passo que o relógio não vê. O estado do authorizer vive numa instância por
 chamada (`_Vigia`), nunca em variável de módulo, e é removido no fim. A porta é a lista permitida: o que

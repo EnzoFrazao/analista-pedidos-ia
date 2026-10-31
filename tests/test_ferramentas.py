@@ -247,10 +247,8 @@ _TEXTO_LONGO = (
 )
 
 
-def _amplificadora(n_colunas: int) -> str:
-    return (
-        f"WITH t(r) AS (SELECT {_TEXTO_LONGO}) SELECT {','.join(['r'] * n_colunas)} FROM t, pedidos"
-    )
+def _amplificadora(n_colunas: int, texto: str = _TEXTO_LONGO) -> str:
+    return f"WITH t(r) AS (SELECT {texto}) SELECT {','.join(['r'] * n_colunas)} FROM t, pedidos"
 
 
 def test_consulta_que_amplifica_a_saida_fica_dentro_do_teto(conn, banco_path: Path) -> None:
@@ -264,12 +262,12 @@ def test_consulta_que_amplifica_a_saida_fica_dentro_do_teto(conn, banco_path: Pa
     assert len(texto.encode("utf-8")) <= MAX_BYTES_RESULTADO
     resposta = json.loads(texto)
     assert len(resposta["colunas"]) == MAX_COLUNAS
-    assert resposta["truncado"] is True  # linhas tiradas do fim para caber
-    assert 0 < len(resposta["linhas"]) < 50
+    # ~2 MB por linha: o teto de bytes de `executar_consulta` para na primeira linha.
+    assert resposta["truncado"] is True
+    assert len(resposta["linhas"]) == 1
     assert all(len(linha) == MAX_COLUNAS for linha in resposta["linhas"])
     assert resposta["cortes"]["colunas_omitidas"] == 300 - MAX_COLUNAS
     assert resposta["cortes"]["celulas_encurtadas"] > 0
-    assert resposta["cortes"]["linhas_omitidas"] == 50 - len(resposta["linhas"])
     assert resposta["aviso"]
     # A auditoria (rastro e avaliação) guarda o mesmo corte que o modelo viu.
     assert auditoria["colunas"] == resposta["colunas"]
@@ -277,6 +275,26 @@ def test_consulta_que_amplifica_a_saida_fica_dentro_do_teto(conn, banco_path: Pa
     assert auditoria["truncado"] is True and auditoria["cortes"] == resposta["cortes"]
     assert auditoria["n_linhas"] == len(resposta["linhas"])
     assert len(json.dumps(auditoria, ensure_ascii=False).encode("utf-8")) <= 2 * MAX_BYTES_RESULTADO
+
+
+def test_linhas_que_nao_cabem_no_json_saem_do_fim(conn, banco_path: Path) -> None:
+    # 35 colunas de 729 caracteres: ~25 KB por linha cabe no teto de bytes da consulta por dezenas
+    # de linhas, mas não nos 32 KB do JSON depois dos cortes de célula e de coluna.
+    texto_medio = "replace(replace(replace('x','x','xxxxxxxxx'),'x','xxxxxxxxx'),'x','xxxxxxxxx')"
+    texto, auditoria = despachar(
+        conn,
+        banco_path,
+        "executar_sql",
+        _sql(_amplificadora(35, texto_medio)),
+        limite_linhas=50,
+        timeout_s=2.0,
+    )
+
+    assert len(texto.encode("utf-8")) <= MAX_BYTES_RESULTADO
+    resposta = json.loads(texto)
+    assert resposta["truncado"] is True
+    assert resposta["cortes"]["linhas_omitidas"] > 0
+    assert 0 < len(resposta["linhas"]) == auditoria["n_linhas"]
 
 
 def test_celula_longa_e_encurtada_com_marcador_visivel(conn, banco_path: Path) -> None:

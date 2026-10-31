@@ -3,7 +3,7 @@
 1. Conexão `mode=ro` + `PRAGMA query_only=ON` (o motor recusa escrita).
 2. Texto: uma única instrução, começando por SELECT ou WITH.
 3. Authorizer do SQLite: lista permitida de ações, tabelas e funções; o resto é negado.
-4. Teto de linhas com `fetchmany(limite_linhas + 1)`.
+4. Teto de linhas e de bytes, lendo uma linha por vez.
 5. Progress handler que interrompe a consulta depois de `timeout_s`.
 
 O authorizer e o progress handler são instalados a cada chamada, com estado próprio da chamada,
@@ -17,6 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 LIMITE_LINHAS = 50  # teto padrão de linhas devolvidas por consulta
+# Teto aproximado do resultado em memória. Sem ele, 51 linhas de 2000 colunas de 10 KB chegavam a
+# centenas de MB antes de `ferramentas.despachar` cortar a saída.
+LIMITE_BYTES = 1_000_000
 MOTIVOS_DE_ESCRITA = frozenset({"nao_select", "acao"})
 TABELAS_PERMITIDAS = frozenset({"itens_cardapio", "pedidos", "itens_pedido"})
 FUNCOES_PERMITIDAS = frozenset(
@@ -271,14 +274,23 @@ class _Vigia:
         return 0
 
 
+def _tamanho(linha: tuple) -> int:
+    """Bytes aproximados de uma linha: texto e blob pelo comprimento, o resto conta 8."""
+    return sum(len(valor) if isinstance(valor, (str, bytes)) else 8 for valor in linha)
+
+
 def executar_consulta(
     conn: sqlite3.Connection,
     sql: str,
     *,
     limite_linhas: int = LIMITE_LINHAS,
+    limite_bytes: int = LIMITE_BYTES,
     timeout_s: float = 2.0,
 ) -> ResultadoSql:
-    """Roda uma consulta do modelo. Levanta `SqlRejeitado` ou `ErroDeConsulta`."""
+    """Roda uma consulta do modelo. Levanta `SqlRejeitado` ou `ErroDeConsulta`.
+
+    A primeira linha sempre volta, mesmo acima de `limite_bytes`; as seguintes param no teto.
+    """
     instrucao = _validar_texto(sql)
     ctes = {
         nome
@@ -291,7 +303,15 @@ def executar_consulta(
     cursor = None
     try:
         cursor = conn.execute(instrucao)
-        linhas = cursor.fetchmany(limite_linhas + 1)
+        linhas: list[tuple] = []
+        total = 0
+        truncado = False
+        while (linha := cursor.fetchone()) is not None:
+            total += _tamanho(linha)
+            if len(linhas) == limite_linhas or (linhas and total > limite_bytes):
+                truncado = True
+                break
+            linhas.append(linha)
         colunas = tuple(descricao[0] for descricao in cursor.description or ())
     except (sqlite3.Error, UnicodeError) as erro:  # UnicodeError: ex. surrogate solto no texto
         if vigia.motivo is not None:
@@ -304,8 +324,4 @@ def executar_consulta(
             cursor.close()
         conn.set_authorizer(None)
         conn.set_progress_handler(None, 0)
-    return ResultadoSql(
-        colunas=colunas,
-        linhas=tuple(linhas[:limite_linhas]),
-        truncado=len(linhas) > limite_linhas,
-    )
+    return ResultadoSql(colunas=colunas, linhas=tuple(linhas), truncado=truncado)

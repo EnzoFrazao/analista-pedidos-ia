@@ -109,13 +109,21 @@ def test_resultado_truncado_nao_acerta(conn_ref):
 
 @pytest.mark.parametrize(
     "cortes",
-    [{"celulas_encurtadas": 1}, {"colunas_omitidas": 1}, {"nomes_de_coluna_encurtados": 1}],
+    [{"celulas_encurtadas": 1}, {"colunas_omitidas": 1}, {"linhas_omitidas": 1}],
 )
 def test_resultado_cortado_pelo_teto_da_ferramenta_nunca_acerta(conn_ref, cortes):
     certa = _auditoria(conn_ref, POR_ID["i01"].referencias[0])
 
     assert _tentar("i01", _resposta("ok", {**certa, "cortes": {}}), conn_ref) is True
     assert not _tentar("i01", _resposta("ok", {**certa, "cortes": cortes}), conn_ref)
+
+
+def test_nome_de_coluna_encurtado_nao_reprova_resposta_certa(conn_ref):
+    # O comparador ignora nomes de coluna: encurtá-los não muda o conteúdo da resposta.
+    certa = _auditoria(conn_ref, POR_ID["a01"].referencias[0])
+
+    resposta = _resposta("ok", {**certa, "cortes": {"nomes_de_coluna_encurtados": 1}})
+    assert _tentar("a01", resposta, conn_ref) is True
 
 
 def test_resultado_da_i01_pelo_despacho_ainda_acerta(conn_ref, banco_path):

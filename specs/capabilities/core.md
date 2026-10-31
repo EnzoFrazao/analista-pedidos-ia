@@ -34,7 +34,8 @@ gerados pelo modelo. Envio do relatório por mensageria também ficou de fora.
   ferramenta volta a ele como resultado, sem exceção.
 - Cada consulta SQL passa pelas camadas de ADR-0001: conexão somente leitura, uma instrução
   `SELECT`/`WITH` (um `;` ou comentário no fim é aceito), authorizer com ações, tabelas e funções
-  permitidas, teto de 50 linhas (`truncado`), tempo máximo de 2 s. Escrita falha mesmo sem o validador.
+  permitidas, teto de 50 linhas e de cerca de 1 MB lidos (`truncado`; a primeira linha sempre volta),
+  tempo máximo de 2 s. Escrita falha mesmo sem o validador.
 - O resultado de `executar_sql` que volta ao modelo e vai à auditoria tem tetos de saída: texto de
   célula até 200 caracteres (o resto vira `…[+N caracteres]`), até 30 colunas, nome de coluna até 64
   caracteres e JSON inteiro até 32 KB (linhas do fim saem e `truncado` fica verdadeiro). O que foi
@@ -101,7 +102,7 @@ texto. Lacunas conhecidas:
 ## Evidências de implementação e teste
 
 - Implementação: pacotes `analista/`, `avaliacao/` e `app/painel.py`; arquitetura em `../system.md`.
-- Suíte: `python -m pytest -q -W error` (461 passaram em 2026-10-30, depois da revisão final) e
+- Suíte: `python -m pytest -q -W error` (466 passaram em 2026-10-31) e
   `python -m ruff check .` (sem avisos).
 - Dados: `python -m analista.dados` gera `data/pedidos.db` com 8000 pedidos.
 - Relatório sem chave: `python -m analista.relatorio --semana 2026-09-21 --sem-modelo` (saída

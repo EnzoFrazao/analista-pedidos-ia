@@ -1,12 +1,12 @@
 # Estratégia e mapa de testes
 
-**Última verificação:** 2026-10-30
+**Última verificação:** 2026-10-31
 
 ## Gates
 
 | Comando | Evidência | Resultado em 2026-10-30 |
 |---|---|---|
-| `python -m pytest -q -W error` | Núcleo, avaliação e painel, sempre com modelo falso, sem rede | 461 passaram |
+| `python -m pytest -q -W error` | Núcleo, avaliação e painel, sempre com modelo falso, sem rede | 466 passaram |
 | `python -m ruff check .` | Estilo e erros estáticos (linha de até 100 colunas) | sem avisos |
 | `python -m analista.dados` | O gerador roda e cria o banco de 8000 pedidos | executado |
 | `python -m analista.relatorio --semana 2026-09-21 --sem-modelo` | Relatório sem chave | executado; saída em `docs/exemplo-relatorio.md` |

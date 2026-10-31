@@ -32,7 +32,8 @@ analista/   núcleo, sem Streamlit
   config.py       variáveis de ambiente e .env -> Configuracao (RAIZ = pasta do repositório),
                   host_do_endereco
   dados.py        gerador determinístico, DEFINICOES de métrica, hash_banco
-  sql_seguro.py   conexão ro, authorizer, teto de linhas (LIMITE_LINHAS), tempo e tamanho de valor
+  sql_seguro.py   conexão ro, authorizer, teto de linhas e de bytes (LIMITE_LINHAS,
+                  LIMITE_BYTES), tempo e tamanho de valor
   ferramentas.py  descrever_esquema, executar_sql, esquema JSON (ferramentas(limite_linhas)),
                   despachar e os tetos de saída (célula, colunas, bytes)
   llm.py          interface ModeloLLM e ClienteOpenAI (único arquivo que importa openai)

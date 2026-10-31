@@ -17,7 +17,7 @@ mesmo que o modelo obedeça a uma instrução maliciosa, e precisa falhar fechad
 Cada consulta passa por camadas independentes em `analista/sql_seguro.py`: conexão `mode=ro` com
 `PRAGMA query_only=ON`; uma única instrução começando por `SELECT` ou `WITH`; *authorizer* do SQLite que
 aprova só uma lista de ações, de tabelas (`TABELAS_PERMITIDAS`) e de funções (`FUNCOES_PERMITIDAS`);
-teto de linhas imposto com `fetchmany` (a consulta não precisa conter `LIMIT`); *progress handler* de 2 s
+teto de linhas e de bytes imposto na leitura, linha a linha (a consulta não precisa conter `LIMIT`); *progress handler* de 2 s
 e limites do SQLite para o tamanho de valor e de padrão `LIKE`, que contêm funções de custo quadrático
 dentro de um único passo. O estado do authorizer e do prazo é uma instância por chamada, e cada pergunta
 usa a sua conexão.

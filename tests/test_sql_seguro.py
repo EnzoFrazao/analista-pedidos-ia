@@ -4,6 +4,7 @@ import shutil
 import sqlite3
 import threading
 import time
+import tracemalloc
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -433,6 +434,34 @@ def test_nao_trunca_quando_cabe_exatamente(conn: sqlite3.Connection) -> None:
     assert resultado.truncado is False
 
 
+def test_trunca_no_teto_de_bytes(conn: sqlite3.Connection) -> None:
+    # Inteiro conta 8 bytes: cabem 5 linhas em 40 bytes, e a sexta marca truncado.
+    resultado = executar_consulta(conn, "SELECT id FROM pedidos ORDER BY id", limite_bytes=40)
+    assert resultado.linhas == ((1,), (2,), (3,), (4,), (5,))
+    assert resultado.truncado is True
+
+
+def test_primeira_linha_volta_mesmo_acima_do_teto_de_bytes(conn: sqlite3.Connection) -> None:
+    resultado = executar_consulta(conn, "SELECT 'abcdef' AS x", limite_bytes=1)
+    assert resultado.linhas == (("abcdef",),)
+    assert resultado.truncado is False
+
+
+def test_resultado_largo_nao_estoura_a_memoria(conn: sqlite3.Connection) -> None:
+    # 300 colunas de 6561 caracteres: ~2 MB por linha, ~100 MB se as 51 linhas fossem lidas.
+    colunas = ", ".join(f"x AS c{i}" for i in range(300))
+    sql = f"WITH t(x) AS (SELECT {_texto(8)}) SELECT {colunas} FROM t, pedidos"
+    tracemalloc.start()
+    try:
+        resultado = executar_consulta(conn, sql)
+        _, pico = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert resultado.truncado is True
+    assert len(resultado.linhas) == 1
+    assert pico < 20 * 1024 * 1024
+
+
 def test_limite_padrao_e_50(conn: sqlite3.Connection) -> None:
     resultado = executar_consulta(conn, "SELECT id FROM pedidos")
     assert len(resultado.linhas) == 50
@@ -493,7 +522,8 @@ def test_funcao_quadratica_nao_passa_do_tempo(
     inicio = time.monotonic()
     with pytest.raises((SqlRejeitado, ErroDeConsulta)) as erro:
         executar_consulta(conn, sql, timeout_s=timeout_s)
-    assert time.monotonic() - inicio < 2 * timeout_s
+    # Sem a guarda, estas consultas levavam de 11 a 25 s; a folga absorve máquina ou CI ocupados.
+    assert time.monotonic() - inicio < timeout_s + 1.0
     if esperado == "tempo":
         assert isinstance(erro.value, SqlRejeitado)
         assert erro.value.motivo == "tempo"

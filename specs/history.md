@@ -1,6 +1,10 @@
 # Marcos do projeto
 
-## 2026-10-31 — histórico reorganizado antes da publicação
+## 2026-10-31 — histórico reorganizado e dois ajustes antes da publicação
+
+- `executar_consulta` passou a ler linha a linha com teto de cerca de 1 MB, em vez de `fetchmany`: uma
+  consulta larga chegava a centenas de MB em memória antes do corte da saída. A avaliação deixou de
+  tratar nome de coluna encurtado como resultado cortado (o comparador não olha nomes).
 
 - Antes do primeiro push, o histórico foi reescrito para tirar rascunhos de planejamento que não fazem
   parte do projeto. A memória técnica (`specs/`) e o `AGENTS.md` entraram num commit próprio, e o
