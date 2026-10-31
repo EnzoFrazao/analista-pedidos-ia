@@ -95,6 +95,11 @@ até o mantenedor aprovar o texto. Lacunas conhecidas:
 - Publicado em 2026-10-31: repositório público e painel em `https://pedidoai.streamlit.app/`
   (Streamlit Community Cloud). O build e o chat funcionaram; o plano gratuito dorme depois de umas 12 h
   sem acesso (`P-004`).
+- O chat do painel público usa uma chave do plano gratuito do Gemini, por decisão do mantenedor (sem
+  custo). Nesse plano o Google pode usar o conteúdo enviado para melhorar seus produtos e revisores
+  podem lê-lo; por isso o painel mostra, antes do campo, um aviso de que só se deve perguntar sobre os
+  dados fictícios e de que é para maiores de 18 anos (`TEXTO_AVISO_DE_DADOS`, testado em
+  `tests/test_painel.py`). O aviso só aparece com o chat ligado. Não é parecer jurídico.
 - O teto diário é aproximado e usa a data do servidor (21h de Brasília em hospedagem em UTC); o contador
   fica em arquivo, que pode não persistir entre reinícios.
 - Um erro fixo do provedor numa pergunta faz `--retomar` parar sempre no mesmo ponto.

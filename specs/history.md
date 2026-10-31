@@ -1,5 +1,14 @@
 # Marcos do projeto
 
+## 2026-10-31 — autoria das perguntas e aviso do plano gratuito
+
+- As 25 perguntas e as consultas de referência foram geradas por IA (Claude) na construção, e não
+  revisadas pelo mantenedor; README, specs e o texto do relatório de avaliação deixaram de dizer
+  "escritas pelo autor". Nenhum número de acerto mudou.
+- O painel passou a avisar, antes do campo de pergunta, que o chat usa o plano gratuito do Gemini
+  (o Google pode usar e ler o conteúdo enviado), e o README ganhou o mesmo aviso. O mantenedor decidiu
+  seguir no plano gratuito, sem custo. Dois testes novos (480).
+
 ## 2026-10-31 — vídeo e README reescrito
 
 - O README foi reorganizado e ilustrado (vídeo, capturas do painel, diagramas, banco de dados, camadas

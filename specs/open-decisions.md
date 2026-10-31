@@ -45,8 +45,12 @@
   473, igual ao banco) e recusou o pedido para apagar dados, no mesmo dia.
 - **Pergunta:** a ambígua nunca foi testada no endereço público (a avaliação local já deu 0 de 3, então
   não vale gastar a cota gratuita). O Hugging Face Spaces, que deixaria um Space no perfil, ainda vale a
-  pena como segundo endereço? O texto dos termos do plano gratuito do Google sobre o conteúdo de
-  visitantes ainda não foi conferido.
+  pena como segundo endereço?
+- **Resolvido em 2026-10-31 (termos do Google):** os termos adicionais da API Gemini foram lidos na
+  fonte oficial. No plano gratuito, o conteúdo enviado pode ser usado para melhorar os produtos do
+  Google e lido por revisores, e há cláusula sobre sites acessíveis a menores de 18 anos. O mantenedor
+  decidiu **ficar no plano gratuito, sem custo**, e avisar no painel e no README (`TEXTO_AVISO_DE_DADOS`).
+  Ficam descartados ativar cobrança e desligar o chat. Se o painel for aberto a outro público, rever.
 - **Responsável esperado:** mantenedor.
 - **Impacto:** `docs/publicar-painel.md`; o cabeçalho YAML do Space só importa se houver um Space.
 - **Regra provisória:** o painel segue no Streamlit Cloud; o plano gratuito dorme depois de umas 12 h

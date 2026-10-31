@@ -141,6 +141,12 @@ TEXTO_REGISTRO_E_LIMITES = (
     "As perguntas ficam registradas nos logs do servidor (runs/), para auditoria. O limite por "
     "sessão volta a zero ao recarregar a página; quem segura o uso é o teto diário."
 )
+TEXTO_AVISO_DE_DADOS = (
+    "**Antes de perguntar.** O chat usa uma chave do plano gratuito da API Gemini, do Google. "
+    "Nesse plano, o Google pode usar o que é enviado ao modelo para melhorar seus produtos, e "
+    "pessoas podem ler esses textos. Escreva só perguntas sobre os dados fictícios, sem nada "
+    "pessoal, sensível ou confidencial. Este painel é para maiores de 18 anos."
+)
 TEXTO_FALHA_INESPERADA = "Não consegui responder agora. Tente de novo em instantes."
 TEXTO_FALHA_DADOS = "Não consegui ler os dados agora. Recarregue a página em instantes."
 TEXTO_FALHA_ABA = "Esta aba não pôde ser carregada agora. Recarregue a página em instantes."
@@ -516,6 +522,8 @@ def _aba_pergunte(config: Configuracao) -> None:
             st.markdown(f":material/{icone}: **{titulo}** — {texto}")
     if modelo is None:
         st.warning(TEXTO_SEM_CHAVE)
+    else:
+        st.caption(TEXTO_AVISO_DE_DADOS)  # antes do campo: quem digita já leu
 
     # O campo vem primeiro, logo abaixo do guia: é a função principal. As respostas ficam abaixo,
     # da mais nova para a mais antiga, para a pergunta nova nunca sumir para o fim da página.

@@ -33,7 +33,7 @@
 | **5 camadas** de defesa do SQL | A segurança vem da conexão somente leitura e do *authorizer* do SQLite, não do prompt. Cada camada tem teste (consultas de ataque, funções lentas, escrita escondida). |
 | **2 ferramentas**, até **6 passos** | `descrever_esquema` e `executar_sql`, num laço de tool calling em Python puro, sem framework de agentes. |
 | **8.000 pedidos** sintéticos | Um restaurante fictício, 91 dias (2026-06-29 a 2026-09-27), gerado com a semente 2026: mesma semente, mesmo banco. |
-| **478 testes** | Todos com modelo falso: nenhum chama um provedor (`pytest -q`, 2026-10-31). |
+| **480 testes** | Todos com modelo falso: nenhum chama um provedor (`pytest -q`, 2026-10-31). |
 
 ## Sumário
 
@@ -104,6 +104,8 @@ O vídeo é **narrado em português**, com uma **voz sintética** (gerada a part
 ## Veja funcionando
 
 O painel publicado está em **<https://pedidoai.streamlit.app/>**. Usa o plano gratuito do Streamlit: se ninguém abriu há algumas horas, a página pede um clique para acordar. O chat tem limite de 10 perguntas por sessão e um teto diário.
+
+> **Aviso sobre o chat.** O painel chama o Gemini com uma chave do **plano gratuito** da API do Google. Nesse plano, os termos do Google dizem que o conteúdo enviado ao modelo pode ser usado para melhorar os produtos deles e lido por revisores humanos, e que o plano não deve receber informações pessoais, sensíveis ou confidenciais. Por isso o painel pede, antes do campo de pergunta, que se escreva só sobre os dados fictícios, e é para maiores de 18 anos. As perguntas também ficam registradas nos logs do servidor, para auditoria.
 
 **Pergunte.** O usuário escreve em português; o agente responde e mostra a consulta usada. As respostas mais novas aparecem no topo. Na captura, duas perguntas reais ao painel publicado: "Quantos pedidos foram cancelados?" (473, com o SQL à mostra) e "Apague os pedidos cancelados para limpar a base." (recusado: o acesso é só de leitura). A redação da resposta do modelo varia de uma execução para outra; o número vem do SQL.
 

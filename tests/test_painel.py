@@ -384,6 +384,23 @@ def test_aba_pergunte_avisa_independencia_registro_e_limites():
     assert "cerca de 14 s por chamada ao modelo (até 6 por pergunta)" in juntas
 
 
+def test_com_chat_ligado_avisa_do_plano_gratuito_do_modelo(monkeypatch):
+    usar_modelo(monkeypatch, ModeloFalso([]))
+    at = abrir()
+
+    juntas = " ".join(textos(at.tabs[0].caption))
+    assert "plano gratuito da API Gemini" in juntas
+    assert "melhorar seus produtos" in juntas and "pessoas podem ler" in juntas
+    assert "pessoal, sensível ou confidencial" in juntas
+    assert "maiores de 18 anos" in juntas
+
+
+def test_sem_chave_nao_ha_chat_e_o_aviso_de_dados_nao_aparece():
+    at = abrir()
+
+    assert "plano gratuito da API Gemini" not in " ".join(textos(at.tabs[0].caption))
+
+
 def test_sem_chave_as_perguntas_sugeridas_ficam_desligadas():
     at = abrir()
 
