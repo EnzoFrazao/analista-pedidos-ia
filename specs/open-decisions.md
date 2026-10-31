@@ -14,16 +14,16 @@
 
 ## P-002 — Modelo padrão e plano gratuito
 
-- **Problema:** `gemini-3.5-flash-lite` vem da página de modelos do Gemini (2026-10-30), mas os limites do
-  plano gratuito só aparecem no Google AI Studio, com chave real. No Groq, os modelos listados têm 8 mil
-  tokens por minuto, pouco para a avaliação. Além disso, a volta do Gemini 3 exige devolver a
-  `thought_signature` das chamadas de ferramenta; o código faz isso (`ChamadaFerramenta.extra`), mas só
-  uma chave real confirma que basta.
-- **Pergunta:** qual provedor e modelo ficam como padrão, e a volta com `thought_signature` funciona?
+- **Problema:** `gemini-3.5-flash-lite` vem da página de modelos do Gemini (2026-10-30). Com chave real
+  (2026-10-31), `verificar_modelo` passou, inclusive a volta com `thought_signature`, e a avaliação de 75
+  execuções terminou. Ficam em aberto os limites numéricos do plano gratuito, que só aparecem no Google
+  AI Studio: a primeira tentativa parou no limite por minuto depois de 4 execuções. No Groq, os modelos
+  listados têm 8 mil tokens por minuto, pouco para a avaliação.
+- **Pergunta:** o Gemini Flash-Lite fica como padrão, e quais são os limites do plano gratuito?
 - **Responsável esperado:** mantenedor, depois de criar a chave e rodar `python -m analista.verificar_modelo`.
 - **Impacto:** `.env.example`, duração e custo da avaliação, e o texto do README.
 - **Regra provisória:** manter o Gemini Flash-Lite no `.env.example`, configurável por variável, com o
-  Groq (`openai/gpt-oss-120b`) como alternativa comentada; tratar o Gemini 3 como não verificado.
+  Groq (`openai/gpt-oss-120b`) como alternativa comentada; o Gemini 3 está verificado só para esse modelo e esse provedor.
 - **Capability:** `core`.
 
 ## P-003 — Licença

@@ -10,8 +10,8 @@
 | `python -m ruff check .` | Estilo e erros estáticos (linha de até 100 colunas) | sem avisos |
 | `python -m analista.dados` | O gerador roda e cria o banco de 8000 pedidos | executado |
 | `python -m analista.relatorio --semana 2026-09-21 --sem-modelo` | Relatório sem chave | executado; saída em `docs/exemplo-relatorio.md` |
-| `python -m analista.verificar_modelo` | Sem chave, ensina a configurar e sai com 2 | executado sem chave |
-| `python -m avaliacao.avaliar` | Acerto medido com modelo real; exige a chave do provedor; fora do CI | **não executado** |
+| `python -m analista.verificar_modelo` | Sem chave, ensina a configurar e sai com 2; com chave, confere chave, modelo e tool calling | executado sem chave e com chave real |
+| `python -m avaliacao.avaliar` | Acerto medido com modelo real; exige a chave do provedor; fora do CI | executado em 2026-10-31: geral 88,0%, objetivas 100,0%, ambíguas 0,0% |
 | `python -I <skill>/scripts/validate_specs.py .` | Consistência desta memória técnica | passou |
 
 O CI (`.github/workflows/ci.yml`) roda `ruff check .` e `pytest -q` com Python 3.12 e nunca usa chave.
@@ -53,10 +53,10 @@ resultados e passa nas recusas). O painel é testado com o `AppTest` do Streamli
 
 ## Lacunas
 
-- O acerto do modelo real só existe depois de uma execução de `python -m avaliacao.avaliar` com chave. Até
-  lá nenhum número de acerto pode aparecer no README, no painel ou em texto fora do repositório.
-- A volta do Gemini 3 com `thought_signature` é testada com cliente falso; só `python -m
-  analista.verificar_modelo` com chave prova o comportamento do provedor.
+- Só números de `avaliacao/resultados/ultima.json` podem aparecer no README, no painel ou em texto fora
+  do repositório. A medição é de uma execução, com 25 perguntas e referências escritas pelo autor.
+- A volta do Gemini 3 com `thought_signature` é testada com cliente falso nos testes automatizados; a
+  prova com o provedor real é `python -m analista.verificar_modelo` (passou em 2026-10-31) e não roda no CI.
 - O texto de `DEFINICOES` e o SQL das consultas do relatório são duas escritas da mesma regra, protegidas
   apenas pelo teste que compara os KPIs com consultas independentes (`test_kpis_batem_com_consulta_direta`).
 - O texto em inglês de erros do SQLite é usado por um teste de sintaxe de `tests/test_ferramentas.py`.

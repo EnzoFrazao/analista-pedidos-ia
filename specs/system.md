@@ -97,6 +97,7 @@ Opcionais: `BANCO_PATH`, `RUNS_PATH`, `AVALIACAO_PATH` (só o painel), `LIMITE_S
 - O painel conta no limite a pergunta em que o modelo respondeu pelo menos um passo (`passos > 0`),
   mesmo que o provedor caia depois. O limite por sessão zera ao recarregar a página; o teto diário é a
   trava efetiva. As perguntas ficam em `runs/*.jsonl` no servidor, e o painel avisa isso.
-- Nenhuma execução com provedor real foi feita neste repositório; a compatibilidade com o Gemini 3
-  (`thought_signature`) está implementada e não verificada.
+- Uma avaliação completa com provedor real foi feita em 2026-10-31 (`gemini-3.5-flash-lite`, plano
+  gratuito, commit `758b782`); `verificar_modelo` confirmou a volta com `thought_signature`. Painel e
+  chat nunca rodaram publicados.
 - Nada foi publicado: sem remoto Git, Space nem deploy.

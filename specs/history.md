@@ -1,5 +1,12 @@
 # Marcos do projeto
 
+## 2026-10-31 — primeira avaliação com modelo real
+
+- `verificar_modelo` passou com chave real do Gemini (plano gratuito), e a avaliação de 75 execuções
+  terminou no commit `758b782`: geral 88,0%, objetivas 100,0%, ambíguas 0,0%, linha de base 12,0%. A
+  primeira tentativa parou no limite por minuto; a avaliação passou a esperar 15, 30, 60 e 60 s em 429.
+- O `--retomar` recusou um parcial de outro commit, como projetado; foi preciso `--recomecar`.
+
 ## 2026-10-31 — histórico reorganizado e dois ajustes antes da publicação
 
 - `executar_consulta` passou a ler linha a linha com teto de cerca de 1 MB, em vez de `fetchmany`: uma

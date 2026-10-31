@@ -167,11 +167,26 @@ Cada pergunta roda 3 vezes; o relatório traz a **média** e o **pior caso** (a 
 
 ## Resultados
 
-**Ainda não medido.** A avaliação precisa de uma chave de modelo e gasta a cota dela; ela ainda não foi
-executada com um modelo real, então este repositório não publica nenhum número de acerto. Quando
-alguém rodar `python -m avaliacao.avaliar`, o resultado vai para `avaliacao/resultados/ultima.md` e
-`ultima.json` (com modelo, commit e hashes do prompt, do banco e das perguntas, para reproduzir) e
-aparece na aba Avaliação do painel.
+Uma execução completa em 2026-10-31, com `gemini-3.5-flash-lite` (plano gratuito), temperatura 0,
+3 repetições das 25 perguntas, no commit `758b782`. Os arquivos `avaliacao/resultados/ultima.md` e
+`ultima.json` trazem o modelo, o commit e os hashes do prompt, do banco e das perguntas, para reproduzir.
+
+| Grupo | Perguntas | Média | Pior caso |
+|---|---:|---:|---:|
+| Geral | 25 | 88,0% | 88,0% |
+| Objetivas (agregação, filtro e junção, períodos, recusa, injeção) | 22 | 100,0% | 100,0% |
+| Ambíguas (piso) | 3 | 0,0% | 0,0% |
+
+Linha de base: um modelo que nunca consulta e só responde sem escrever acertaria 12,0%; um que responde
+a toda ambígua com uma pergunta, 24,0%.
+
+**Como ler.** As 22 objetivas acertaram nas 3 repetições, mas são 22 perguntas escritas pelo autor, com
+referências escritas por ele: o número diz que o agente acerta *estas* perguntas, não que acerta
+perguntas novas. As 3 ambíguas (`m01` a `m03`) erraram nas 3 repetições pela regra estrita da medição:
+nos 9 rastros, o agente escolheu uma interpretação e consultou, quase nunca perguntou de volta, e o
+resultado trazia colunas além das da referência ou outra visão (por exemplo, a série das 13 semanas em
+vez da comparação de duas). A regra não foi afrouxada depois de ver a nota. A qualidade das respostas em
+texto não foi medida.
 
 ## Limitações e avisos de operação
 
@@ -182,8 +197,10 @@ aparece na aba Avaliação do painel.
   algarismos.
 - **O teto diário do painel é aproximado**: com várias sessões ao mesmo tempo, uma contagem pode se perder.
   Ele zera na meia-noite do relógio do servidor, que em hospedagem em UTC é às 21h de Brasília.
-- **Limite do provedor (erro 429):** o cliente tenta de novo após 2, 4 e 8 s, cerca de 14 s por
-  chamada ao modelo (até 6 por pergunta), antes de mostrar o aviso. Uma pergunta em que o modelo já
+- **Limite do provedor (erro 429):** no painel, o cliente tenta de novo após 2, 4 e 8 s, cerca de 14 s
+  por chamada ao modelo (até 6 por pergunta), antes de mostrar o aviso; a avaliação espera 15, 30, 60 e
+  60 s. No plano gratuito do Gemini, a primeira tentativa de avaliação parou no limite por minuto depois
+  de 4 execuções. Uma pergunta em que o modelo já
   respondeu pelo menos um passo conta no limite mesmo que o provedor caia depois.
 - **O chat não tem memória.** Cada pergunta vai sozinha ao agente; ele não vê as anteriores. O prompt
   permite que ele pergunte o que falta, mas a resposta do usuário chega como pergunta nova, sem o
@@ -193,8 +210,9 @@ aparece na aba Avaliação do painel.
 - **Erro fixo do provedor numa pergunta** (por exemplo, o provedor recusa sempre aquele pedido): a
   avaliação para ali com saída 3, e `--retomar` para no mesmo ponto até a causa ser resolvida.
 - **Gemini 3 e a assinatura de raciocínio.** O código devolve intactos os campos próprios do provedor
-  numa chamada de ferramenta (o Gemini 3 manda uma `thought_signature`), mas isso **ainda não foi
-  verificado com uma chave real**. `python -m analista.verificar_modelo` faz esse teste.
+  numa chamada de ferramenta (o Gemini 3 manda uma `thought_signature`). `python -m
+  analista.verificar_modelo` passou com uma chave real em 2026-10-31, e a avaliação completa rodou sem
+  erro de provedor. Vale para esse modelo e esse provedor; outro modelo precisa do mesmo teste.
 - **Dados sintéticos**, com padrões plantados: as respostas não dizem nada sobre restaurantes de verdade.
 
 ## Estrutura
