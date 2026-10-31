@@ -236,6 +236,13 @@ def test_erro_do_provedor_vira_resposta_amigavel(config: Configuracao):
     assert resposta.esgotou_passos is False
     assert resposta.passos == 1  # só o passo que completou
     assert len(resposta.consultas) == 1  # o que já tinha rodado fica
+    assert resposta.falha_provedor is True
+
+
+def test_resposta_normal_nao_marca_falha_do_provedor(config: Configuracao):
+    resposta = Agente(ModeloFalso([_responde("Tudo certo.")]), config).perguntar("Oi")
+
+    assert resposta.falha_provedor is False
 
 
 def test_outras_excecoes_do_modelo_nao_sao_engolidas(config: Configuracao):

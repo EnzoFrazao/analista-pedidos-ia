@@ -1,8 +1,10 @@
 """Dublês de teste. Nenhum deles faz rede."""
 
 import copy
+import json
 
-from analista.llm import MensagemModelo
+from analista.llm import ChamadaFerramenta, MensagemModelo
+from avaliacao.perguntas import Pergunta
 
 
 class ModeloFalso:
@@ -26,3 +28,39 @@ class ModeloFalso:
         if isinstance(item, Exception):
             raise item
         return item
+
+
+class ModeloOraculo:
+    """Responde cada pergunta da avaliação como o gabarito: uma consulta (a primeira referência)
+    e a resposta; nas perguntas de recusa, só recusa, sem consultar. Reconhece a pergunta pelo
+    texto da mensagem do usuário. `conversas` conta as perguntas iniciadas."""
+
+    TEXTO_RECUSA = "Não posso alterar os dados: eu só consulto. Quer que eu faça uma consulta?"
+
+    def __init__(self, perguntas: list[Pergunta]):
+        self._por_texto = {p.texto: p for p in perguntas}
+        self.conversas = 0
+
+    def _consulta(self, pergunta: Pergunta) -> str | None:
+        return None if pergunta.verificacao == "recusa" else pergunta.referencias[0]
+
+    def completar(self, mensagens: list[dict], ferramentas: list[dict]) -> MensagemModelo:
+        primeira_vez = len(mensagens) == 2  # só system + user
+        if primeira_vez:
+            self.conversas += 1
+        pergunta = self._por_texto[mensagens[1]["content"]]
+        consulta = self._consulta(pergunta)
+        if consulta is None:
+            return MensagemModelo(self.TEXTO_RECUSA, ())
+        if primeira_vez:
+            chamada = ChamadaFerramenta("c1", "executar_sql", json.dumps({"consulta": consulta}))
+            return MensagemModelo(None, (chamada,))
+        return MensagemModelo("Aqui está o resultado da consulta.", ())
+
+
+class ModeloRuim(ModeloOraculo):
+    """Consulta `SELECT 0` em toda pergunta, inclusive nas de recusa: erra o resultado, mas
+    não viola nada."""
+
+    def _consulta(self, pergunta: Pergunta) -> str | None:
+        return "SELECT 0"

@@ -54,6 +54,8 @@ class Resposta:
     consultas: tuple[dict, ...]
     passos: int
     esgotou_passos: bool
+    # True quando o serviço do modelo falhou: `texto` é a mensagem do erro, não uma resposta.
+    falha_provedor: bool = False
 
 
 class Agente:
@@ -103,7 +105,9 @@ class Agente:
                     mensagem = self._modelo.completar(mensagens, FERRAMENTAS)
                 except ErroDoProvedor as erro:
                     self._registrar("erro_provedor", mensagem=str(erro), tipo=erro.tipo)
-                    return self._concluir(str(erro), consultas, passos, esgotou=False)
+                    return self._concluir(
+                        str(erro), consultas, passos, esgotou=False, falha_provedor=True
+                    )
                 passos += 1
                 self._registrar(
                     "passo",
@@ -147,10 +151,16 @@ class Agente:
         return self._concluir(texto, consultas, passos, esgotou=True)
 
     def _concluir(
-        self, texto: str, consultas: list[dict], passos: int, *, esgotou: bool
+        self,
+        texto: str,
+        consultas: list[dict],
+        passos: int,
+        *,
+        esgotou: bool,
+        falha_provedor: bool = False,
     ) -> Resposta:
         self._registrar("resposta", texto=texto, passos=passos, esgotou_passos=esgotou)
-        return Resposta(texto, tuple(consultas), passos, esgotou)
+        return Resposta(texto, tuple(consultas), passos, esgotou, falha_provedor)
 
 
 def mensagem_do_assistente(mensagem: MensagemModelo) -> dict:
