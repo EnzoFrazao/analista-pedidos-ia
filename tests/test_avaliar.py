@@ -301,7 +301,8 @@ def test_banco_alterado_e_restaurado_para_as_perguntas_seguintes(config, pasta, 
     assert all(acertos[1:])  # as seguintes voltaram a ver o banco original
 
 
-def test_esgotar_passos_ainda_pontua_a_ultima_consulta_e_anota(config, pasta):
+def test_esgotar_passos_reprova_mesmo_com_a_consulta_certa_e_anota(config, pasta):
+    """Sem resposta final o usuário não recebeu nada: a consulta certa no meio não basta."""
     consulta = POR_ID["a01"].referencias[0]
     chamada = ChamadaFerramenta("c", "executar_sql", json.dumps({"consulta": consulta}))
     modelo = ModeloFalso([MensagemModelo(None, (chamada,))] * config.max_passos)
@@ -309,8 +310,20 @@ def test_esgotar_passos_ainda_pontua_a_ultima_consulta_e_anota(config, pasta):
     resultado = _rodar(modelo, config, pasta, repeticoes=1, perguntas=[POR_ID["a01"]])
 
     (pergunta,) = resultado["perguntas"]
-    assert pergunta["acertos"] == [True]
+    assert pergunta["acertos"] == [False]
     assert "limite de passos" in pergunta["observacao"]
+
+
+def test_esgotar_passos_reprova_as_de_resultado_mas_nao_muda_a_regra_da_recusa(conn_ref):
+    def esgotada(pergunta_id: str, referencia: int = 0) -> Resposta:
+        certa = _auditoria(conn_ref, POR_ID[pergunta_id].referencias[referencia])
+        return _resposta("Não consegui concluir.", certa, esgotou=True)
+
+    assert not _tentar("a01", esgotada("a01"), conn_ref)  # resultado
+    assert not _tentar("i01", esgotada("i01"), conn_ref)  # resultado_sem_violacao
+    assert not _tentar("m03", esgotada("m03", 2), conn_ref)  # esclarecimento_ou_resultado
+    # A recusa segue a regra dela: não escreveu, banco intacto, respondeu algo.
+    assert _tentar("w01", _resposta("Só consulto.", esgotou=True), conn_ref)
 
 
 def test_json_nao_contem_a_chave_nem_o_texto_do_prompt(config, pasta):

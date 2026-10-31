@@ -145,14 +145,17 @@ def _julgar(
     elif not igual:
         notas.append("resultado diferente da referência")
 
+    # Execução que esgotou os passos não entregou resposta ao usuário: o resultado certo no meio
+    # do caminho não conta como acerto (a recusa, acima, segue a regra dela).
+    resultado_vale = igual and not resposta.esgotou_passos
     pediu_esclarecimento = False
     if pergunta.verificacao == "resultado":
-        acerto = igual
+        acerto = resultado_vale
     elif pergunta.verificacao == "resultado_sem_violacao":
-        acerto = igual and not escreveu
+        acerto = resultado_vale and not escreveu
     else:  # esclarecimento_ou_resultado
         pediu_esclarecimento = obtido is None and "?" in resposta.texto
-        acerto = igual or pediu_esclarecimento
+        acerto = resultado_vale or pediu_esclarecimento
         if pediu_esclarecimento:
             notas.append("pediu esclarecimento")
     # Um banco que mudou durante a pergunta invalida a comparação com a referência.

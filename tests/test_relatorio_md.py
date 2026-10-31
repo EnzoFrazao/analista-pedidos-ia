@@ -86,3 +86,10 @@ def test_o_relatorio_em_markdown_usa_as_mesmas_frases():
     assert texto_media_e_pior_caso() in md
     for limite in LIMITES_DA_MEDICAO:
         assert f"- {limite}" in md
+
+
+def test_limites_dizem_que_passos_esgotados_e_resultado_cortado_contam_como_erro():
+    juntos = " ".join(LIMITES_DA_MEDICAO)
+
+    assert "limite de passos" in juntos
+    assert "cortado" in juntos
