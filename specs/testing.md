@@ -4,9 +4,9 @@
 
 ## Gates
 
-| Comando | Evidência | Resultado em 2026-10-30 |
+| Comando | Evidência | Resultado em 2026-10-31 |
 |---|---|---|
-| `python -m pytest -q -W error` | Núcleo, avaliação e painel, sempre com modelo falso, sem rede | 466 passaram |
+| `python -m pytest -q -W error` | Núcleo, avaliação e painel, sempre com modelo falso, sem rede | 478 passaram |
 | `python -m ruff check .` | Estilo e erros estáticos (linha de até 100 colunas) | sem avisos |
 | `python -m analista.dados` | O gerador roda e cria o banco de 8000 pedidos | executado |
 | `python -m analista.relatorio --semana 2026-09-21 --sem-modelo` | Relatório sem chave | executado; saída em `docs/exemplo-relatorio.md` |
@@ -67,3 +67,9 @@ resultados e passa nas recusas). O painel é testado com o `AppTest` do Streamli
   (`test_perguntas_sugeridas_saem_do_conjunto_da_avaliacao`); o visual (cores, cartões, gráficos) só
   foi visto no navegador, em 800 px e 375 px, sem teste automático.
 - O contador do teto diário não é testado com processos concorrentes de verdade.
+- O vídeo (`docs/video/`) e as capturas do painel (`docs/img/`) não são gerados nem conferidos por
+  teste: foram produzidos por script fora do repositório e conferidos à mão contra `ultima.json` e
+  contra o banco gerado com a semente 2026 (hash igual ao de `ultima.json`). Se o painel, a avaliação ou
+  o banco mudarem, o vídeo e as imagens ficam desatualizados até alguém refazê-los. A narração é de voz
+  sintética: a pronúncia (siglas como SQL e IA, Python, GitHub) e a gramática do roteiro só se conferem
+  lendo e ouvindo, sem teste automático (a legenda e o texto em `docs/video/legendas.md` são a referência).

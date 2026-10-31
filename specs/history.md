@@ -1,5 +1,19 @@
 # Marcos do projeto
 
+## 2026-10-31 — vídeo e README reescrito
+
+- O README foi reorganizado e ilustrado (vídeo, capturas do painel, diagramas, banco de dados, camadas
+  de segurança com o teste de cada uma, avaliação, processo de construção com IA), sem remover o
+  conteúdo anterior nem as limitações. Os números de acerto continuam só os de `ultima.json`.
+- Entrou um vídeo de 2 min 10 s (`docs/video/`), narrado e legendado em português do Brasil, com voz
+  sintética (edge-tts, `pt-BR-FranciscaNeural`), prévia em GIF e transcrição que inclui o texto da narração.
+  Houve três versões: muda (2 min 12 s, legendas em português e inglês), narrada longa (4 min 50 s,
+  descartada por ser longa demais e ter erros de português na fala) e esta, de roteiro curto, cenas cronometradas
+  pela fala, sem termos em inglês na voz e com a primeira cena desenhada como capa (o quadro inicial é o
+  pôster). As cenas usam um rastro real da avaliação, o `ultima.json` e o banco da semente 2026; a demo é
+  uma gravação do painel publicado, com a espera do modelo acelerada. Os scripts que geraram o vídeo e a
+  voz ficaram fora do repositório.
+
 ## 2026-10-31 — publicação e redesenho do painel
 
 - Repositório público (MIT) e painel no Streamlit Community Cloud. A primeira CI falhou
