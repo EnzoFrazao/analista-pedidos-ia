@@ -14,6 +14,7 @@ def test_padroes():
     assert cfg.banco == RAIZ / "data" / "pedidos.db"
     assert cfg.pasta_runs == RAIZ / "runs"
     assert cfg.estado_limites == RAIZ / "runs" / "limite_dia.json"
+    assert cfg.avaliacao == RAIZ / "avaliacao" / "resultados" / "ultima.json"
     assert cfg.max_passos == 6
     assert cfg.limite_linhas == 50
     assert cfg.limite_sessao == 10
@@ -82,3 +83,9 @@ def test_sem_mapeamento_le_o_ambiente_do_processo(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "modelo-do-ambiente")
 
     assert carregar_configuracao().llm_model == "modelo-do-ambiente"
+
+
+def test_caminho_da_avaliacao_pode_ser_sobrescrito(tmp_path: Path):
+    cfg = carregar_configuracao({"AVALIACAO_PATH": str(tmp_path / "outra.json")})
+
+    assert cfg.avaliacao == tmp_path / "outra.json"

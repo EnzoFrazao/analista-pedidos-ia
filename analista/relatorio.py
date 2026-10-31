@@ -18,6 +18,15 @@ from pathlib import Path
 
 from analista.config import RAIZ, carregar_configuracao
 from analista.dados import FIM, INICIO
+from analista.formatacao import (
+    data_br,
+    dinheiro,
+    inteiro,
+    minutos,
+    ou_traco,
+    percentual,
+    variacao,
+)
 from analista.llm import ErroDoProvedor, ModeloLLM, criar_modelo
 from analista.sql_seguro import abrir_somente_leitura, executar_consulta
 
@@ -140,16 +149,7 @@ def calcular_kpis(conn: sqlite3.Connection, inicio: date, fim: date) -> dict:
             ORDER BY vendidos DESC, c.nome
             LIMIT {N_ITENS}""",
     ).linhas
-    bairros = executar_consulta(
-        conn,
-        f"""SELECT bairro, AVG(tempo_entrega_min) AS tempo_medio, COUNT(*) AS pedidos
-            FROM pedidos
-            WHERE status <> 'cancelado' AND {filtro}
-            GROUP BY bairro
-            HAVING COUNT(*) >= {MIN_PEDIDOS_BAIRRO}
-            ORDER BY tempo_medio DESC, bairro
-            LIMIT {N_BAIRROS}""",
-    ).linhas
+    bairros = _bairros_por_tempo(conn, inicio, fim, N_BAIRROS)
 
     return {
         "pedidos": validos,
@@ -163,6 +163,45 @@ def calcular_kpis(conn: sqlite3.Connection, inicio: date, fim: date) -> dict:
             for bairro, tempo_b, qtd in bairros
         ],
     }
+
+
+def _bairros_por_tempo(
+    conn: sqlite3.Connection, inicio: date, fim: date, limite: int | None = None
+) -> list[tuple[str, float, int]]:
+    """(bairro, tempo médio, pedidos válidos), do mais lento ao mais rápido.
+
+    Só entram bairros com pelo menos `MIN_PEDIDOS_BAIRRO` pedidos válidos: média de poucos
+    pedidos engana. É a única definição desta regra; o relatório e o painel passam por aqui.
+    """
+    corte = f"LIMIT {limite}" if limite else ""
+    return conn.execute(
+        f"""SELECT bairro, AVG(tempo_entrega_min) AS tempo_medio, COUNT(*) AS pedidos
+            FROM pedidos
+            WHERE status <> 'cancelado' AND {_filtro(inicio, fim)}
+            GROUP BY bairro
+            HAVING COUNT(*) >= {MIN_PEDIDOS_BAIRRO}
+            ORDER BY tempo_medio DESC, bairro
+            {corte}"""
+    ).fetchall()
+
+
+def tempo_por_bairro(conn: sqlite3.Connection, inicio: date, fim: date) -> list[tuple[str, float]]:
+    """Tempo médio de entrega (1 casa) por bairro no período, do mais lento ao mais rápido."""
+    return [(bairro, round(tempo, 1)) for bairro, tempo, _ in _bairros_por_tempo(conn, inicio, fim)]
+
+
+def pedidos_por_dia(conn: sqlite3.Connection, inicio: date, fim: date) -> list[tuple[date, int]]:
+    """Pedidos válidos de cada dia de [inicio, fim], inclusive; dia sem pedido vale 0."""
+    por_dia = dict(
+        conn.execute(
+            f"""SELECT substr(data_hora, 1, 10), COUNT(*)
+                FROM pedidos
+                WHERE status <> 'cancelado' AND {_filtro(inicio, fim)}
+                GROUP BY 1"""
+        ).fetchall()
+    )
+    dias = [inicio + timedelta(days=n) for n in range((fim - inicio).days + 1)]
+    return [(dia, por_dia.get(dia.isoformat(), 0)) for dia in dias]
 
 
 def variacoes(atual: dict, anterior: dict) -> dict:
@@ -184,44 +223,6 @@ def variacoes(atual: dict, anterior: dict) -> dict:
         else:
             resultado[chave] = round((a - b) / b * 100, 1) or 0.0
     return resultado
-
-
-# --- formatação pt-BR -------------------------------------------------------------------------
-
-
-def _decimal(valor: float, casas: int) -> str:
-    return f"{valor:,.{casas}f}".replace(",", "\0").replace(".", ",").replace("\0", ".")
-
-
-def _inteiro(valor: int) -> str:
-    return _decimal(valor, 0)
-
-
-def _dinheiro(valor: float) -> str:
-    return f"R$ {_decimal(valor, 2)}"
-
-
-def _percentual(valor: float) -> str:
-    return f"{_decimal(valor, 1)}%"
-
-
-def _minutos(valor: float) -> str:
-    return f"{_decimal(valor, 1)} min"
-
-
-def _variacao(valor: float | None, em_pontos: bool = False) -> str:
-    if valor is None:
-        return "sem base de comparação"
-    sinal = "+" if valor > 0 else ""
-    return f"{sinal}{_decimal(valor, 1)}{' p.p.' if em_pontos else '%'}"
-
-
-def _ou_traco(valor, formatar) -> str:
-    return "sem dados" if valor is None else formatar(valor)
-
-
-def _data_br(dia: date) -> str:
-    return dia.strftime("%d/%m/%Y")
 
 
 # --- checagem de números ----------------------------------------------------------------------
@@ -326,30 +327,30 @@ def resumo_deterministico(kpis: dict, variacoes: dict) -> str:
     """Parágrafo montado só com os KPIs; passa na própria checagem de números."""
     frases = [
         (
-            f"A semana teve {_inteiro(kpis['pedidos'])} pedidos válidos e faturamento de "
-            f"{_dinheiro(kpis['faturamento'])}, com ticket médio de "
-            f"{_ou_traco(kpis['ticket_medio'], _dinheiro)}."
+            f"A semana teve {inteiro(kpis['pedidos'])} pedidos válidos e faturamento de "
+            f"{dinheiro(kpis['faturamento'])}, com ticket médio de "
+            f"{ou_traco(kpis['ticket_medio'], dinheiro)}."
         ),
         (
             "O tempo médio de entrega foi de "
-            f"{_ou_traco(kpis['tempo_medio_entrega_min'], _minutos)} "
-            f"e o cancelamento ficou em {_ou_traco(kpis['cancelamento_pct'], _percentual)}."
+            f"{ou_traco(kpis['tempo_medio_entrega_min'], minutos)} "
+            f"e o cancelamento ficou em {ou_traco(kpis['cancelamento_pct'], percentual)}."
         ),
         (
             "Em relação à semana anterior, a variação foi de "
-            f"{_variacao(variacoes.get('faturamento'))} no faturamento, "
-            f"{_variacao(variacoes.get('pedidos'))} nos pedidos e "
-            f"{_variacao(variacoes.get('tempo_medio_entrega_min'))} no tempo médio de entrega."
+            f"{variacao(variacoes.get('faturamento'))} no faturamento, "
+            f"{variacao(variacoes.get('pedidos'))} nos pedidos e "
+            f"{variacao(variacoes.get('tempo_medio_entrega_min'))} no tempo médio de entrega."
         ),
     ]
     if kpis["bairros_mais_lentos"]:
         lentos = "; ".join(
-            f"{b['bairro']} ({_minutos(b['tempo_medio_min'])})" for b in kpis["bairros_mais_lentos"]
+            f"{b['bairro']} ({minutos(b['tempo_medio_min'])})" for b in kpis["bairros_mais_lentos"]
         )
         frases.append(f"Bairros mais lentos: {lentos}.")
     if kpis["itens_mais_vendidos"]:
         itens = "; ".join(
-            f"{i['nome']} ({_inteiro(i['quantidade'])})" for i in kpis["itens_mais_vendidos"]
+            f"{i['nome']} ({inteiro(i['quantidade'])})" for i in kpis["itens_mais_vendidos"]
         )
         frases.append(f"Itens mais vendidos: {itens}.")
     return " ".join(frases)
@@ -357,36 +358,33 @@ def resumo_deterministico(kpis: dict, variacoes: dict) -> str:
 
 def _dados_para_o_modelo(inicio: date, fim: date, kpis: dict, var: dict) -> str:
     linhas = [
-        f"Período: {_data_br(inicio)} a {_data_br(fim)}",
+        f"Período: {data_br(inicio)} a {data_br(fim)}",
+        (f"Pedidos válidos: {inteiro(kpis['pedidos'])} (variação {variacao(var.get('pedidos'))})"),
         (
-            f"Pedidos válidos: {_inteiro(kpis['pedidos'])} "
-            f"(variação {_variacao(var.get('pedidos'))})"
+            f"Faturamento: {dinheiro(kpis['faturamento'])} "
+            f"(variação {variacao(var.get('faturamento'))})"
         ),
         (
-            f"Faturamento: {_dinheiro(kpis['faturamento'])} "
-            f"(variação {_variacao(var.get('faturamento'))})"
-        ),
-        (
-            f"Ticket médio: {_ou_traco(kpis['ticket_medio'], _dinheiro)} "
-            f"(variação {_variacao(var.get('ticket_medio'))})"
+            f"Ticket médio: {ou_traco(kpis['ticket_medio'], dinheiro)} "
+            f"(variação {variacao(var.get('ticket_medio'))})"
         ),
         (
             "Tempo médio de entrega: "
-            f"{_ou_traco(kpis['tempo_medio_entrega_min'], _minutos)} "
-            f"(variação {_variacao(var.get('tempo_medio_entrega_min'))})"
+            f"{ou_traco(kpis['tempo_medio_entrega_min'], minutos)} "
+            f"(variação {variacao(var.get('tempo_medio_entrega_min'))})"
         ),
         (
-            f"Cancelamento: {_ou_traco(kpis['cancelamento_pct'], _percentual)} "
-            f"(variação {_variacao(var.get('cancelamento_pct'), em_pontos=True)}, "
+            f"Cancelamento: {ou_traco(kpis['cancelamento_pct'], percentual)} "
+            f"(variação {variacao(var.get('cancelamento_pct'), em_pontos=True)}, "
             "em pontos percentuais)"
         ),
         f"{N_BAIRROS} bairros mais lentos (tempo médio de entrega):",
         *(
-            f"- {b['bairro']}: {_minutos(b['tempo_medio_min'])}, {_inteiro(b['pedidos'])} pedidos"
+            f"- {b['bairro']}: {minutos(b['tempo_medio_min'])}, {inteiro(b['pedidos'])} pedidos"
             for b in kpis["bairros_mais_lentos"]
         ),
         f"{N_ITENS} itens mais vendidos (unidades):",
-        *(f"- {i['nome']}: {_inteiro(i['quantidade'])}" for i in kpis["itens_mais_vendidos"]),
+        *(f"- {i['nome']}: {inteiro(i['quantidade'])}" for i in kpis["itens_mais_vendidos"]),
     ]
     return "\n".join(linhas)
 
@@ -428,28 +426,28 @@ def _paragrafo_do_modelo(
 
 def _tabela(kpis: dict, var: dict) -> list[str]:
     linhas = [
-        ("Pedidos válidos", _inteiro(kpis["pedidos"]), _variacao(var.get("pedidos"))),
-        ("Faturamento", _dinheiro(kpis["faturamento"]), _variacao(var.get("faturamento"))),
+        ("Pedidos válidos", inteiro(kpis["pedidos"]), variacao(var.get("pedidos"))),
+        ("Faturamento", dinheiro(kpis["faturamento"]), variacao(var.get("faturamento"))),
         (
             "Ticket médio",
-            _ou_traco(kpis["ticket_medio"], _dinheiro),
-            _variacao(var.get("ticket_medio")),
+            ou_traco(kpis["ticket_medio"], dinheiro),
+            variacao(var.get("ticket_medio")),
         ),
         (
             "Tempo médio de entrega",
-            _ou_traco(kpis["tempo_medio_entrega_min"], _minutos),
-            _variacao(var.get("tempo_medio_entrega_min")),
+            ou_traco(kpis["tempo_medio_entrega_min"], minutos),
+            variacao(var.get("tempo_medio_entrega_min")),
         ),
         (
             "Cancelamento",
-            _ou_traco(kpis["cancelamento_pct"], _percentual),
-            _variacao(var.get("cancelamento_pct"), em_pontos=True),
+            ou_traco(kpis["cancelamento_pct"], percentual),
+            variacao(var.get("cancelamento_pct"), em_pontos=True),
         ),
     ]
     return [
         "| KPI | Semana | Variação |",
         "|---|---:|---:|",
-        *(f"| {nome} | {valor} | {variacao} |" for nome, valor, variacao in linhas),
+        *(f"| {nome} | {valor} | {delta} |" for nome, valor, delta in linhas),
     ]
 
 
@@ -474,7 +472,7 @@ def gerar_relatorio(conn: sqlite3.Connection, modelo: ModeloLLM | None, semana_i
         rotulo = _ROTULO_CODIGO
 
     partes = [
-        f"# Relatório semanal: {_data_br(semana_inicio)} a {_data_br(fim)}",
+        f"# Relatório semanal: {data_br(semana_inicio)} a {data_br(fim)}",
         "",
         "Dados sintéticos de um restaurante fictício.",
         "",
@@ -491,14 +489,14 @@ def gerar_relatorio(conn: sqlite3.Connection, modelo: ModeloLLM | None, semana_i
         f"## Bairros mais lentos (mínimo de {MIN_PEDIDOS_BAIRRO} pedidos)",
         "",
         *(
-            f"- {b['bairro']}: {_minutos(b['tempo_medio_min'])} em {_inteiro(b['pedidos'])} pedidos"
+            f"- {b['bairro']}: {minutos(b['tempo_medio_min'])} em {inteiro(b['pedidos'])} pedidos"
             for b in kpis["bairros_mais_lentos"]
         ),
         "",
         f"## {N_ITENS} itens mais vendidos",
         "",
         *(
-            f"- {i['nome']}: {_inteiro(i['quantidade'])} unidades"
+            f"- {i['nome']}: {inteiro(i['quantidade'])} unidades"
             for i in kpis["itens_mais_vendidos"]
         ),
         "",

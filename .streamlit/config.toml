@@ -1,0 +1,3 @@
+[client]
+# Erro não tratado mostra só uma mensagem genérica no navegador; o detalhe fica no log do servidor.
+showErrorDetails = "none"

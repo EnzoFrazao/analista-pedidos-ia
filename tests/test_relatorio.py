@@ -13,10 +13,13 @@ from analista.relatorio import (
     calcular_kpis,
     gerar_relatorio,
     numeros_nao_suportados,
+    pedidos_por_dia,
     resumo_deterministico,
+    tempo_por_bairro,
     variacoes,
 )
 from analista.sql_seguro import abrir_somente_leitura
+from tests.banco_minimo import criar_banco_minimo
 from tests.fakes import ModeloFalso
 
 SEMANA = date(2026, 9, 21)
@@ -98,6 +101,78 @@ def test_kpis_batem_com_consulta_direta(conn: sqlite3.Connection, banco_path: Pa
         [round(b[1], 1) for b in bairros]
     )
     assert [b["pedidos"] for b in kpis["bairros_mais_lentos"]] == [b[2] for b in bairros]
+
+
+def test_pedidos_por_dia_bate_com_consulta_independente(conn: sqlite3.Connection, banco_path: Path):
+    resultado = pedidos_por_dia(conn, SEMANA, SEMANA_FIM)
+
+    ref = sqlite3.connect(banco_path)
+    esperado = dict(
+        ref.execute(
+            """SELECT date(data_hora), COUNT(*) FROM pedidos
+               WHERE status != 'cancelado' AND date(data_hora) BETWEEN '2026-09-21' AND '2026-09-27'
+               GROUP BY 1"""
+        ).fetchall()
+    )
+    ref.close()
+    assert [dia for dia, _ in resultado] == [SEMANA + timedelta(days=n) for n in range(7)]
+    assert {dia.isoformat(): n for dia, n in resultado} == esperado
+    assert sum(n for _, n in resultado) == calcular_kpis(conn, SEMANA, SEMANA_FIM)["pedidos"]
+
+
+def test_pedidos_por_dia_ignora_cancelados_e_inclui_dias_sem_pedido(tmp_path: Path):
+    banco = criar_banco_minimo(
+        tmp_path / "m.db",
+        [
+            ("2026-09-21 12:00:00", "Centro", "entregue", 30),
+            ("2026-09-21 13:00:00", "Centro", "cancelado", None),
+            ("2026-09-23 12:00:00", "Centro", "atrasado", 50),
+            ("2026-09-28 12:00:00", "Centro", "entregue", 30),  # fora da semana
+        ],
+    )
+    conexao = abrir_somente_leitura(banco)
+    try:
+        resultado = pedidos_por_dia(conexao, SEMANA, SEMANA_FIM)
+    finally:
+        conexao.close()
+
+    assert [n for _, n in resultado] == [1, 0, 1, 0, 0, 0, 0]
+
+
+def test_tempo_por_bairro_bate_com_calculo_independente(conn: sqlite3.Connection, banco_path: Path):
+    resultado = tempo_por_bairro(conn, SEMANA, SEMANA_FIM)
+
+    ref = sqlite3.connect(banco_path)
+    linhas = ref.execute(
+        """SELECT bairro, tempo_entrega_min FROM pedidos
+           WHERE status != 'cancelado' AND date(data_hora) BETWEEN '2026-09-21' AND '2026-09-27'"""
+    ).fetchall()
+    ref.close()
+    por_bairro: dict[str, list[int]] = {}
+    for bairro, tempo in linhas:
+        por_bairro.setdefault(bairro, []).append(tempo)
+    medias = {b: sum(t) / len(t) for b, t in por_bairro.items() if len(t) >= 30}
+    esperado = sorted(medias.items(), key=lambda par: (-par[1], par[0]))
+    assert len(resultado) == len(esperado) >= 5
+    assert [b for b, _ in resultado] == [b for b, _ in esperado]
+    assert [t for _, t in resultado] == pytest.approx([round(t, 1) for _, t in esperado])
+    # É a mesma regra do relatório: os mais lentos do relatório são o começo desta lista.
+    lentos = calcular_kpis(conn, SEMANA, SEMANA_FIM)["bairros_mais_lentos"]
+    assert [(b["bairro"], b["tempo_medio_min"]) for b in lentos] == resultado[: len(lentos)]
+
+
+def test_tempo_por_bairro_exige_minimo_de_pedidos_validos(tmp_path: Path):
+    pedidos = [("2026-09-21 12:00:00", "Anil", "entregue", 40)] * 30
+    pedidos += [("2026-09-22 12:00:00", "Anil", "cancelado", None)] * 5
+    pedidos += [("2026-09-22 12:00:00", "Turu", "atrasado", 60)] * 29  # 29 válidos: fora
+    pedidos += [("2026-09-22 12:00:00", "Turu", "cancelado", None)] * 10  # cancelados não somam
+    banco = criar_banco_minimo(tmp_path / "m.db", pedidos)
+    conexao = abrir_somente_leitura(banco)
+    try:
+        assert tempo_por_bairro(conexao, SEMANA, SEMANA_FIM) == [("Anil", 40.0)]
+        assert tempo_por_bairro(conexao, date(2026, 9, 14), date(2026, 9, 20)) == []
+    finally:
+        conexao.close()
 
 
 def test_semana_sem_pedidos_devolve_kpis_vazios(conn: sqlite3.Connection):

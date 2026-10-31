@@ -1,51 +1,61 @@
 """Painel Streamlit: KPIs da semana, chat com o agente e a página de avaliação.
 
-Este arquivo só monta a interface; toda regra está em `analista/` e `avaliacao/`. Rode com
-`streamlit run app/painel.py` (o pacote `analista` precisa estar instalado: `pip install -e .`
-local, `requirements.txt` no deploy, porque o Streamlit põe no `sys.path` a pasta do script e
-não a raiz do projeto).
+Este arquivo só monta a interface; toda regra, consulta e formatação está em `analista/` e
+`avaliacao/`. Rode com `streamlit run app/painel.py` a partir da raiz do projeto (é lá que o
+Streamlit lê `.streamlit/config.toml`). O pacote `analista` precisa estar instalado em modo
+editável (`pip install -e .[painel]`, que é o que `requirements.txt` faz), porque o Streamlit
+põe no `sys.path` a pasta do script e não a raiz, e porque `RAIZ` (data/, runs/, .env) só
+aponta para o repositório numa instalação editável.
 
-Duas decisões que valem para o arquivo todo:
+Decisões que valem para o arquivo todo:
 - A conexão SQLite nunca fica em cache: cada renderização e cada pergunta abrem a sua e fecham
   no fim, porque o Streamlit atende as sessões em threads diferentes. `st.cache_resource` guarda
   só o cliente do modelo.
 - O teto diário do `LimiteDeUso` usa a data do servidor (`date.today`). Em hospedagem em UTC ele
   zera às 21h de Brasília, não à meia-noite.
+- Nenhum erro chega à tela com texto ou stack trace: cada aba é protegida por `_aba`, que loga a
+  exceção (só no servidor) e mostra uma mensagem fixa.
 """
 
 import json
 import logging
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import streamlit as st
 
 from analista import llm
 from analista.agente import MAX_CARACTERES_PERGUNTA, Agente
-from analista.config import RAIZ, Configuracao, carregar_configuracao
+from analista.config import Configuracao, carregar_configuracao
 from analista.dados import FIM, INICIO, garantir_banco
+from analista.formatacao import (
+    data_br,
+    dinheiro,
+    fracao_em_percentual,
+    inteiro,
+    minutos,
+    ou_traco,
+    percentual,
+    variacao,
+)
 from analista.limites import LimiteDeUso
 from analista.rastro import Rastro
 from analista.relatorio import (
     MIN_PEDIDOS_BAIRRO,
-    _data_br,
-    _dinheiro,
-    _filtro,
-    _inteiro,
-    _minutos,
-    _ou_traco,
-    _percentual,
-    _variacao,
     calcular_kpis,
+    pedidos_por_dia,
+    tempo_por_bairro,
     variacoes,
 )
-from analista.sql_seguro import (
-    ErroDeConsulta,
-    SqlRejeitado,
-    abrir_somente_leitura,
-    executar_consulta,
+from analista.sql_seguro import abrir_somente_leitura
+from avaliacao.relatorio_md import (
+    LIMITES_DA_MEDICAO,
+    descricao_do_commit,
+    texto_linha_de_base,
+    texto_media_e_pior_caso,
+    texto_o_que_medem,
+    texto_origem,
 )
-from avaliacao.relatorio_md import _commit, _pct, gerar_markdown
 
 BANNER = "Dados sintéticos de um restaurante fictício. Demonstração."
 SEMANAS = [INICIO + timedelta(days=7 * n) for n in range(((FIM - INICIO).days + 1) // 7)]
@@ -61,6 +71,7 @@ TEXTO_NOTA_DO_PROVEDOR = (
 )
 TEXTO_FALHA_INESPERADA = "Não consegui responder agora. Tente de novo em instantes."
 TEXTO_FALHA_DADOS = "Não consegui ler os dados agora. Recarregue a página em instantes."
+TEXTO_FALHA_ABA = "Esta aba não pôde ser carregada agora. Recarregue a página em instantes."
 TEXTO_SEM_AVALIACAO = (
     "Avaliação ainda não executada. Quando ela rodar, esta página mostra o acerto médio, o pior "
     "caso e a tabela por categoria."
@@ -73,7 +84,7 @@ TEXTO_AVALIACAO_ILEGIVEL = (
 log = logging.getLogger("painel")
 
 
-# --- modelo e limites -------------------------------------------------------------------------
+# --- modelo e sessão --------------------------------------------------------------------------
 
 
 @st.cache_resource(show_spinner=False)
@@ -94,71 +105,41 @@ def _historico() -> list[dict]:
 
 
 def _rotulo_semana(segunda: date) -> str:
-    return f"{_data_br(segunda)} a {_data_br(segunda + timedelta(days=6))}"
-
-
-def _pedidos_por_dia(conn: sqlite3.Connection, segunda: date) -> list[dict]:
-    domingo = segunda + timedelta(days=6)
-    linhas = executar_consulta(
-        conn,
-        f"""SELECT substr(data_hora, 1, 10) AS dia, COUNT(*)
-            FROM pedidos
-            WHERE status <> 'cancelado' AND {_filtro(segunda, domingo)}
-            GROUP BY dia""",
-    ).linhas
-    por_dia = dict(linhas)
-    dias = [segunda + timedelta(days=n) for n in range(7)]
-    return [
-        {
-            "Dia": f"{DIAS_DA_SEMANA[dia.weekday()]} {dia:%d/%m}",
-            "Pedidos": por_dia.get(dia.isoformat(), 0),
-        }
-        for dia in dias
-    ]
-
-
-def _tempo_por_bairro(conn: sqlite3.Connection, segunda: date) -> list[dict]:
-    domingo = segunda + timedelta(days=6)
-    linhas = executar_consulta(
-        conn,
-        f"""SELECT bairro, ROUND(AVG(tempo_entrega_min), 1) AS minutos
-            FROM pedidos
-            WHERE status <> 'cancelado' AND {_filtro(segunda, domingo)}
-            GROUP BY bairro
-            HAVING COUNT(*) >= {MIN_PEDIDOS_BAIRRO}
-            ORDER BY minutos DESC, bairro""",
-    ).linhas
-    return [{"Bairro": bairro, "Minutos": minutos} for bairro, minutos in linhas]
+    return f"{data_br(segunda)} a {data_br(segunda + timedelta(days=6))}"
 
 
 def _carregar_semana(config: Configuracao, segunda: date) -> dict:
-    """Tudo o que a aba precisa, numa conexão aberta e fechada aqui."""
+    """Tudo o que a aba precisa, numa conexão aberta e fechada aqui. Só chama o núcleo."""
+    domingo = segunda + timedelta(days=6)
     conn = abrir_somente_leitura(config.banco)
     try:
-        atual = calcular_kpis(conn, segunda, segunda + timedelta(days=6))
+        atual = calcular_kpis(conn, segunda, domingo)
         anterior = None
         if segunda > INICIO:
-            anterior_segunda = segunda - timedelta(days=7)
-            anterior = calcular_kpis(conn, anterior_segunda, segunda - timedelta(days=1))
+            anterior = calcular_kpis(conn, segunda - timedelta(days=7), segunda - timedelta(days=1))
         return {
             "kpis": atual,
             "variacoes": variacoes(atual, anterior) if anterior else None,
-            "por_dia": _pedidos_por_dia(conn, segunda),
-            "por_bairro": _tempo_por_bairro(conn, segunda),
+            "por_dia": [
+                {"Dia": f"{DIAS_DA_SEMANA[dia.weekday()]} {dia:%d/%m}", "Pedidos": n}
+                for dia, n in pedidos_por_dia(conn, segunda, domingo)
+            ],
+            "por_bairro": [
+                {"Bairro": bairro, "Minutos": tempo}
+                for bairro, tempo in tempo_por_bairro(conn, segunda, domingo)
+            ],
         }
     finally:
         conn.close()
 
 
-def _metrica(
-    coluna, rotulo: str, valor: str, variacao: float | None, *, inverso=False, pontos=False
-):
+def _metrica(coluna, rotulo: str, valor: str, delta: float | None, *, inverso=False, pontos=False):
     """Variação `None` (primeira semana ou sem base) não mostra seta nem texto."""
-    delta, cor = None, "normal"
-    if variacao is not None:
-        delta = _variacao(variacao, em_pontos=pontos)
-        cor = "off" if variacao == 0 else ("inverse" if inverso else "normal")
-    coluna.metric(rotulo, valor, delta=delta, delta_color=cor)
+    texto, cor = None, "normal"
+    if delta is not None:
+        texto = variacao(delta, em_pontos=pontos)
+        cor = "off" if delta == 0 else ("inverse" if inverso else "normal")
+    coluna.metric(rotulo, valor, delta=texto, delta_color=cor)
 
 
 def _aba_painel(config: Configuracao) -> None:
@@ -170,29 +151,29 @@ def _aba_painel(config: Configuracao) -> None:
     )
     try:
         dados = _carregar_semana(config, segunda)
-    except (sqlite3.Error, SqlRejeitado, ErroDeConsulta, OSError) as erro:
-        log.error("falha ao ler os dados do painel: %s", type(erro).__name__)
+    except Exception:
+        log.exception("falha ao ler os dados do painel")
         st.error(TEXTO_FALHA_DADOS)
         return
 
     kpis, var = dados["kpis"], dados["variacoes"] or {}
     cols = st.columns(5)
-    _metrica(cols[0], "Pedidos válidos", _inteiro(kpis["pedidos"]), var.get("pedidos"))
-    _metrica(cols[1], "Faturamento", _dinheiro(kpis["faturamento"]), var.get("faturamento"))
+    _metrica(cols[0], "Pedidos válidos", inteiro(kpis["pedidos"]), var.get("pedidos"))
+    _metrica(cols[1], "Faturamento", dinheiro(kpis["faturamento"]), var.get("faturamento"))
     _metrica(
-        cols[2], "Ticket médio", _ou_traco(kpis["ticket_medio"], _dinheiro), var.get("ticket_medio")
+        cols[2], "Ticket médio", ou_traco(kpis["ticket_medio"], dinheiro), var.get("ticket_medio")
     )
     _metrica(
         cols[3],
         "Tempo médio de entrega",
-        _ou_traco(kpis["tempo_medio_entrega_min"], _minutos),
+        ou_traco(kpis["tempo_medio_entrega_min"], minutos),
         var.get("tempo_medio_entrega_min"),
         inverso=True,
     )
     _metrica(
         cols[4],
         "Cancelamento",
-        _ou_traco(kpis["cancelamento_pct"], _percentual),
+        ou_traco(kpis["cancelamento_pct"], percentual),
         var.get("cancelamento_pct"),
         inverso=True,
         pontos=True,
@@ -208,20 +189,29 @@ def _aba_painel(config: Configuracao) -> None:
     esquerda, direita = st.columns(2)
     with esquerda:
         st.subheader("Pedidos válidos por dia")
-        st.bar_chart(dados["por_dia"], x="Dia", y="Pedidos", sort=False)
+        if any(linha["Pedidos"] for linha in dados["por_dia"]):
+            st.bar_chart(dados["por_dia"], x="Dia", y="Pedidos", sort=False)
+        else:
+            st.info("Sem pedidos válidos nesta semana.")
     with direita:
         st.subheader("Tempo médio de entrega por bairro (min)")
-        st.bar_chart(dados["por_bairro"], x="Bairro", y="Minutos", sort=False)
-        st.caption(f"Só bairros com pelo menos {MIN_PEDIDOS_BAIRRO} pedidos válidos na semana.")
+        if dados["por_bairro"]:
+            st.bar_chart(dados["por_bairro"], x="Bairro", y="Minutos", sort=False)
+            st.caption(f"Só bairros com pelo menos {MIN_PEDIDOS_BAIRRO} pedidos válidos na semana.")
+        else:
+            st.info(f"Nenhum bairro com pelo menos {MIN_PEDIDOS_BAIRRO} pedidos válidos na semana.")
 
     st.subheader("Itens mais vendidos")
-    st.dataframe(
-        [
-            {"Posição": n, "Item": item["nome"], "Unidades": item["quantidade"]}
-            for n, item in enumerate(kpis["itens_mais_vendidos"], start=1)
-        ],
-        hide_index=True,
-    )
+    if kpis["itens_mais_vendidos"]:
+        st.dataframe(
+            [
+                {"Posição": n, "Item": item["nome"], "Unidades": item["quantidade"]}
+                for n, item in enumerate(kpis["itens_mais_vendidos"], start=1)
+            ],
+            hide_index=True,
+        )
+    else:
+        st.info("Nenhum item vendido nesta semana.")
 
 
 # --- aba Pergunte -----------------------------------------------------------------------------
@@ -242,12 +232,11 @@ def _mostrar_resposta(item: dict, limite_linhas: int) -> None:
     with st.expander(titulo):
         for n, consulta in enumerate(consultas, start=1):
             if len(consultas) > 1:
-                ultima = (
-                    " (a última bem-sucedida, a que sustenta a resposta)"
-                    if (n == len(consultas))
-                    else ""
+                ultima = n == len(consultas)
+                st.caption(
+                    f"Consulta {n} de {len(consultas)}"
+                    + (" (a última bem-sucedida, a que sustenta a resposta)" if ultima else "")
                 )
-                st.caption(f"Consulta {n} de {len(consultas)}{ultima}")
             st.code(consulta["sql"], language="sql")
             if consulta["truncado"]:
                 st.caption(
@@ -271,8 +260,8 @@ def _perguntar(pergunta: str, modelo, limite: LimiteDeUso, config: Configuracao)
     """Roda o agente (conexão nova dentro dele). Só pergunta respondida entra na contagem."""
     try:
         resposta = Agente(modelo, config, Rastro(config.pasta_runs)).perguntar(pergunta)
-    except Exception as erro:  # noqa: BLE001 - a tela nunca mostra stack trace nem o erro
-        log.error("falha inesperada ao responder: %s", type(erro).__name__)
+    except Exception:
+        log.exception("falha inesperada ao responder")
         return {"tipo": "erro", "texto": TEXTO_FALHA_INESPERADA, "consultas": []}
     if not resposta.falha_provedor:
         limite.registrar()
@@ -304,7 +293,7 @@ def _aba_pergunte(config: Configuracao) -> None:
         with st.chat_message("assistant"):
             _mostrar_resposta(item, config.limite_linhas)
 
-    entrada = st.chat_input("Pergunte algo sobre os pedidos")
+    entrada = st.chat_input("Pergunte algo sobre os pedidos", disabled=modelo is None)
     if entrada is None or modelo is None:
         return
 
@@ -317,16 +306,16 @@ def _aba_pergunte(config: Configuracao) -> None:
             f"A pergunta passa de {MAX_CARACTERES_PERGUNTA} caracteres; resuma e tente de novo."
         )
         return
-    autorizada, motivo = limite.autorizar(_feitas())
-    if not autorizada:
-        st.warning(motivo)
-        return
 
+    autorizada, motivo = limite.autorizar(_feitas())
     with st.chat_message("user"):
         st.markdown(pergunta)
     with st.chat_message("assistant"):
-        with st.spinner("Consultando os dados..."):
-            item = _perguntar(pergunta, modelo, limite, config)
+        if autorizada:
+            with st.spinner("Consultando os dados..."):
+                item = _perguntar(pergunta, modelo, limite, config)
+        else:  # o aviso do limite fica na conversa e sobrevive aos próximos reruns
+            item = {"tipo": "aviso", "texto": motivo, "consultas": []}
         _mostrar_resposta(item, config.limite_linhas)
     _historico().append({"pergunta": pergunta, **item})
     mostrar_contador()
@@ -335,18 +324,12 @@ def _aba_pergunte(config: Configuracao) -> None:
 # --- aba Avaliação ----------------------------------------------------------------------------
 
 
-def _data_da_avaliacao(texto: str) -> str:
-    try:
-        return datetime.fromisoformat(texto).strftime("%d/%m/%Y %H:%M")
-    except (TypeError, ValueError):
-        return str(texto)
-
-
 def _preparar_avaliacao(resultado: dict) -> dict:
-    """Textos prontos para a tela. Levanta KeyError/TypeError/ValueError se o arquivo for torto."""
-    cabecalho = gerar_markdown(resultado).split("\n## ", 1)[0]
-    cabecalho = cabecalho.removeprefix("# Avaliação do agente").strip()
-    base = resultado["linha_de_base"]
+    """Textos prontos para a tela, com a redação do relatório da avaliação (`relatorio_md`).
+
+    Levanta KeyError/TypeError/ValueError se o arquivo for torto. Só exige o que a tela usa:
+    perguntas, hashes e endereço do provedor podem faltar.
+    """
     grupos = [
         (rotulo, resultado[chave])
         for rotulo, chave in (
@@ -357,39 +340,36 @@ def _preparar_avaliacao(resultado: dict) -> dict:
     ]
     return {
         "parcial": resultado.get("categoria_filtrada"),
-        "metricas": [(rotulo, _pct(g["media"]), _pct(g["pior_caso"])) for rotulo, g in grupos],
+        "metricas": [
+            (rotulo, fracao_em_percentual(g["media"]), fracao_em_percentual(g["pior_caso"]))
+            for rotulo, g in grupos
+        ],
         "categorias": [
             {
                 "Categoria": nome,
                 "Perguntas": g["n"],
-                "Média": _pct(g["media"]),
-                "Pior caso": _pct(g["pior_caso"]),
+                "Média": fracao_em_percentual(g["media"]),
+                "Pior caso": fracao_em_percentual(g["pior_caso"]),
             }
             for nome, g in resultado["categorias"].items()
         ],
-        "base": (
-            f"Linha de base: um modelo que nunca consulta e só responde sem escrever acertaria "
-            f"{_pct(base['nunca_consulta'])}; se respondesse com uma pergunta ('?') a toda "
-            f"ambígua, {_pct(base['pergunta_de_volta'])}. Compare a nota do agente com esses "
-            "números."
-        ),
-        "origem": (
-            f"Modelo `{resultado['modelo']}` · gerado em {_data_da_avaliacao(resultado['gerado_em'])} "
-            f"· {resultado['repeticoes']} repetições por pergunta · commit {_commit(resultado)}"
-        ),
-        # O que os números medem: o texto de abertura do relatório, sem repetir a linha de base.
-        "o_que_medem": cabecalho.split("**Linha de base**", 1)[0].strip(),
+        "media_e_pior_caso": texto_media_e_pior_caso(),
+        "ressalvas": list(LIMITES_DA_MEDICAO),
+        "base": texto_linha_de_base(resultado),
+        "origem": f"{texto_origem(resultado)} Commit: {descricao_do_commit(resultado)}.",
+        "o_que_medem": texto_o_que_medem(),
     }
 
 
-def _aba_avaliacao() -> None:
-    caminho = RAIZ / "avaliacao" / "resultados" / "ultima.json"
-    if not caminho.exists():
-        st.info(TEXTO_SEM_AVALIACAO)
-        return
+def _aba_avaliacao(config: Configuracao) -> None:
     try:
-        pronto = _preparar_avaliacao(json.loads(caminho.read_text(encoding="utf-8")))
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        if not config.avaliacao.exists():
+            st.info(TEXTO_SEM_AVALIACAO)
+            return
+        resultado = json.loads(config.avaliacao.read_text(encoding="utf-8"))
+        pronto = _preparar_avaliacao(resultado)
+    except Exception:
+        log.exception("falha ao ler o resultado da avaliação")
         st.warning(TEXTO_AVALIACAO_ILEGIVEL)
         return
 
@@ -401,10 +381,9 @@ def _aba_avaliacao() -> None:
     for coluna, (rotulo, media, pior) in zip(st.columns(3), pronto["metricas"], strict=True):
         coluna.metric(rotulo, media)
         coluna.caption(f"Pior caso: {pior}")
-    st.caption(
-        "A média é o acerto médio entre as repetições; o pior caso é o menor acerto de uma "
-        "repetição. Ambíguas é um piso: outras respostas razoáveis contam como erro."
-    )
+    st.caption(pronto["media_e_pior_caso"])
+    for ressalva in pronto["ressalvas"]:  # o que a nota não prova, logo abaixo da nota
+        st.caption(ressalva)
     st.subheader("Por categoria")
     st.dataframe(pronto["categorias"], hide_index=True)
     st.caption(pronto["base"])
@@ -414,6 +393,15 @@ def _aba_avaliacao() -> None:
 
 
 # --- página -----------------------------------------------------------------------------------
+
+
+def _aba(corpo, *argumentos) -> None:
+    """Rede de segurança: falha inesperada numa aba vira uma mensagem fixa, não um stack trace."""
+    try:
+        corpo(*argumentos)
+    except Exception:
+        log.exception("falha inesperada na aba (%s)", corpo.__name__)
+        st.error(TEXTO_FALHA_ABA)
 
 
 def main() -> None:
@@ -428,18 +416,18 @@ def main() -> None:
     config = carregar_configuracao()
     try:
         garantir_banco(config.banco)
-    except (OSError, sqlite3.Error) as erro:
-        log.error("falha ao preparar o banco: %s", type(erro).__name__)
+    except (OSError, sqlite3.Error):
+        log.exception("falha ao preparar o banco")
         st.error(TEXTO_FALHA_DADOS)
         st.stop()
 
     aba_painel, aba_pergunte, aba_avaliacao = st.tabs(["Painel", "Pergunte", "Avaliação"])
     with aba_painel:
-        _aba_painel(config)
+        _aba(_aba_painel, config)
     with aba_pergunte:
-        _aba_pergunte(config)
+        _aba(_aba_pergunte, config)
     with aba_avaliacao:
-        _aba_avaliacao()
+        _aba(_aba_avaliacao, config)
 
 
 main()

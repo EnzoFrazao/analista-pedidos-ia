@@ -20,6 +20,7 @@ class Configuracao:
     llm_api_key: str | None = field(default=None, repr=False)
     banco: Path = RAIZ / "data" / "pedidos.db"
     pasta_runs: Path = RAIZ / "runs"
+    avaliacao: Path = RAIZ / "avaliacao" / "resultados" / "ultima.json"
     max_passos: int = 6
     limite_linhas: int = 50
     limite_sessao: int = 10
@@ -41,12 +42,14 @@ def carregar_configuracao(env: Mapping[str, str] | None = None) -> Configuracao:
     chave = (env.get("LLM_API_KEY") or "").strip()
     banco = env.get("BANCO_PATH")
     runs = env.get("RUNS_PATH")
+    avaliacao = env.get("AVALIACAO_PATH")
     return Configuracao(
         llm_base_url=env.get("LLM_BASE_URL") or padrao.llm_base_url,
         llm_model=env.get("LLM_MODEL") or padrao.llm_model,
         llm_api_key=chave or None,
         banco=Path(banco) if banco else padrao.banco,
         pasta_runs=Path(runs) if runs else padrao.pasta_runs,
+        avaliacao=Path(avaliacao) if avaliacao else padrao.avaliacao,
         limite_sessao=int(env.get("LIMITE_SESSAO") or padrao.limite_sessao),
         limite_dia=int(env.get("LIMITE_DIA") or padrao.limite_dia),
     )

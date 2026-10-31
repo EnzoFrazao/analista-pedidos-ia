@@ -12,6 +12,7 @@ VARIAVEIS = (
     "LLM_API_KEY",
     "BANCO_PATH",
     "RUNS_PATH",
+    "AVALIACAO_PATH",
     "LIMITE_SESSAO",
     "LIMITE_DIA",
 )
