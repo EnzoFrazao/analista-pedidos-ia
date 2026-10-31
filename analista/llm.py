@@ -63,7 +63,9 @@ _SINAIS_DE_CHAVE_INVALIDA = (
     "invalid api key",
     "valid api key",  # chave com aspas sobrando: "Please pass a valid API key"
 )
-_SINAIS_DE_MODELO_INVALIDO = ("unexpected model name format",)  # nome do modelo com aspas, por exemplo
+_SINAIS_DE_MODELO_INVALIDO = (
+    "unexpected model name format",
+)  # nome do modelo com aspas, por exemplo
 
 
 def _texto_do_erro(erro: openai.APIError) -> str:
