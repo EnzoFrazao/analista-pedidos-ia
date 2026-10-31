@@ -224,6 +224,29 @@ def test_400_de_chave_invalida_vira_erro_de_chave_sem_vazar_a_chave():
     assert CHAVE not in str(capturado.value)
 
 
+def test_400_de_chave_com_aspas_sobrando_vira_erro_de_chave():
+    # Visto no Gemini: chave colada com aspas no painel de segredos.
+    erro = _erro_http(openai.BadRequestError, 400, "Please pass a valid API key")
+
+    with pytest.raises(ErroDoProvedor) as capturado:
+        _cliente(SdkFalso([erro])).completar([], [])
+
+    assert capturado.value.tipo == "chave"
+
+
+def test_400_de_nome_de_modelo_mal_formado_vira_erro_de_modelo():
+    # Visto no Gemini: LLM_MODEL com aspas sobrando.
+    erro = _erro_http(
+        openai.BadRequestError, 400, "GenerateContentRequest.model: unexpected model name format"
+    )
+
+    with pytest.raises(ErroDoProvedor) as capturado:
+        _cliente(SdkFalso([erro])).completar([], [])
+
+    assert capturado.value.tipo == "modelo"
+    assert "LLM_MODEL" in str(capturado.value)
+
+
 def test_400_de_outro_motivo_continua_erro_generico():
     erro = _erro_http(openai.BadRequestError, 400, "tools not supported")
 

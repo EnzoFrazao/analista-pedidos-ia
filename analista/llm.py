@@ -54,12 +54,25 @@ class ErroDoProvedor(Exception):
         self.tipo = tipo
 
 
-_SINAIS_DE_CHAVE_INVALIDA = ("api key not valid", "api_key_invalid", "invalid api key")
+_SINAIS_DE_CHAVE_INVALIDA = (
+    "api key not valid",
+    "api_key_invalid",
+    "invalid api key",
+    "valid api key",  # chave com aspas sobrando: "Please pass a valid API key"
+)
+_SINAIS_DE_MODELO_INVALIDO = ("unexpected model name format",)  # nome do modelo com aspas, por exemplo
+
+
+def _texto_do_erro(erro: openai.APIError) -> str:
+    return f"{erro} {getattr(erro, 'body', '')}".lower()
 
 
 def _chave_invalida(erro: openai.APIError) -> bool:
-    texto = f"{erro} {getattr(erro, 'body', '')}".lower()
-    return any(sinal in texto for sinal in _SINAIS_DE_CHAVE_INVALIDA)
+    return any(sinal in _texto_do_erro(erro) for sinal in _SINAIS_DE_CHAVE_INVALIDA)
+
+
+def _modelo_invalido(erro: openai.APIError) -> bool:
+    return any(sinal in _texto_do_erro(erro) for sinal in _SINAIS_DE_MODELO_INVALIDO)
 
 
 def _erro_amigavel(erro: openai.APIError) -> ErroDoProvedor:
@@ -89,6 +102,12 @@ def _erro_amigavel(erro: openai.APIError) -> ErroDoProvedor:
         # O Gemini responde 400 (não 401) a uma chave inválida.
         return ErroDoProvedor(
             "O serviço do modelo recusou a chave de acesso. Confira LLM_API_KEY.", "chave"
+        )
+    if isinstance(erro, openai.BadRequestError) and _modelo_invalido(erro):
+        return ErroDoProvedor(
+            "O serviço do modelo não aceitou o nome do modelo. Confira LLM_MODEL "
+            "(sem aspas sobrando).",
+            "modelo",
         )
     status = getattr(erro, "status_code", None)
     detalhe = f" (código {status})" if status else ""
