@@ -96,6 +96,21 @@ def test_caminho_da_avaliacao_pode_ser_sobrescrito(tmp_path: Path):
     assert cfg.avaliacao == tmp_path / "outra.json"
 
 
+@pytest.mark.parametrize("colado", ['"abc123"', "'abc123'", ' "abc123"\n', "\"'abc123'\""])
+def test_aspas_sobrando_em_volta_da_chave_e_do_modelo_sao_tiradas(colado):
+    """O Gemini responde 400 a chave ou modelo com aspas; o painel de segredos pode trazê-las."""
+    cfg = carregar_configuracao({"LLM_API_KEY": colado, "LLM_MODEL": colado})
+
+    assert cfg.llm_api_key == "abc123"
+    assert cfg.llm_model == "abc123"
+
+
+def test_aspas_no_meio_do_valor_ficam():
+    cfg = carregar_configuracao({"LLM_API_KEY": 'abc"123'})
+
+    assert cfg.llm_api_key == 'abc"123'
+
+
 def test_endereco_e_modelo_sem_espacos_nem_quebra_de_linha():
     """Valor colado no painel de segredos costuma trazer espaço ou quebra de linha no fim."""
     cfg = carregar_configuracao(

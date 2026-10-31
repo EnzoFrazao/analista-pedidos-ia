@@ -35,6 +35,15 @@ class Configuracao:
         return self.pasta_runs / "limite_dia.json"
 
 
+def _valor_colado(valor: str | None) -> str:
+    """Valor colado em painel de segredos: tira o espaço ou a quebra de linha do fim e as aspas
+    que sobram em volta (o Gemini responde 400 a chave ou modelo com aspas)."""
+    limpo = (valor or "").strip()
+    while len(limpo) >= 2 and limpo[0] == limpo[-1] and limpo[0] in "\"'":
+        limpo = limpo[1:-1].strip()
+    return limpo
+
+
 def carregar_configuracao(env: Mapping[str, str] | None = None) -> Configuracao:
     """Monta a configuração. Sem `env`, lê o `.env` da raiz e o ambiente do processo."""
     if env is None:
@@ -42,10 +51,9 @@ def carregar_configuracao(env: Mapping[str, str] | None = None) -> Configuracao:
         env = os.environ
 
     padrao = Configuracao()
-    chave = (env.get("LLM_API_KEY") or "").strip()
-    # Valor colado em painel de segredos costuma trazer espaço ou quebra de linha no fim.
-    endereco = (env.get("LLM_BASE_URL") or "").strip()
-    modelo = (env.get("LLM_MODEL") or "").strip()
+    chave = _valor_colado(env.get("LLM_API_KEY"))
+    endereco = _valor_colado(env.get("LLM_BASE_URL"))
+    modelo = _valor_colado(env.get("LLM_MODEL"))
     banco = env.get("BANCO_PATH")
     runs = env.get("RUNS_PATH")
     avaliacao = env.get("AVALIACAO_PATH")
