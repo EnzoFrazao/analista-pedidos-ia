@@ -1,4 +1,5 @@
 .superpowers/
+docs/state.md
 .env
 .env.*
 !.env.example

@@ -206,7 +206,7 @@ avaliacao/    perguntas.yaml, perguntas.py, comparador.py, avaliar.py, relatorio
 app/          painel.py (Streamlit: abas Painel, Pergunte e Avaliação)
 tests/        pytest; o modelo é sempre falso
 specs/        memória técnica (contrato, arquitetura implementada, evidências de teste)
-docs/         como-funciona.md, entrevista.md, publicar-painel.md, exemplo-relatorio.md, state.md
+docs/         como-funciona.md, publicar-painel.md, exemplo-relatorio.md
 ```
 
 Regras de importação: `analista/` não importa `app/` nem `avaliacao/`; só `analista/llm.py` importa
