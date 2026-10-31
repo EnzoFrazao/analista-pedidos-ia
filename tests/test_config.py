@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import dotenv
 import pytest
 
-from analista.config import RAIZ, Configuracao, carregar_configuracao
+from analista import config
+from analista.config import RAIZ, Configuracao, carregar_configuracao, host_do_endereco
 
 
 def test_padroes():
@@ -79,13 +81,55 @@ def test_configuracao_e_congelada():
     assert isinstance(cfg, Configuracao)
 
 
-def test_sem_mapeamento_le_o_ambiente_do_processo(monkeypatch):
+def test_sem_mapeamento_le_o_env_da_raiz_e_o_ambiente_do_processo(monkeypatch):
+    lidos = []
+    monkeypatch.setattr(config, "load_dotenv", lambda caminho, **kw: lidos.append(caminho))
     monkeypatch.setenv("LLM_MODEL", "modelo-do-ambiente")
 
     assert carregar_configuracao().llm_model == "modelo-do-ambiente"
+    assert lidos == [RAIZ / ".env"]
 
 
 def test_caminho_da_avaliacao_pode_ser_sobrescrito(tmp_path: Path):
     cfg = carregar_configuracao({"AVALIACAO_PATH": str(tmp_path / "outra.json")})
 
     assert cfg.avaliacao == tmp_path / "outra.json"
+
+
+def test_endereco_e_modelo_sem_espacos_nem_quebra_de_linha():
+    """Valor colado no painel de segredos costuma trazer espaço ou quebra de linha no fim."""
+    cfg = carregar_configuracao(
+        {"LLM_BASE_URL": "  https://api.groq.com/openai/v1\n", "LLM_MODEL": "\tmodelo-x \r\n"}
+    )
+
+    assert cfg.llm_base_url == "https://api.groq.com/openai/v1"
+    assert cfg.llm_model == "modelo-x"
+
+
+def test_endereco_ou_modelo_so_com_espacos_usam_o_padrao():
+    cfg = carregar_configuracao({"LLM_BASE_URL": "  ", "LLM_MODEL": "\n"})
+
+    assert cfg.llm_base_url == Configuracao().llm_base_url
+    assert cfg.llm_model == Configuracao().llm_model
+
+
+@pytest.mark.parametrize(
+    ("url", "host"),
+    [
+        ("https://usuario:senha@api.exemplo.com:8443/v1/caminho?key=segredo", "api.exemplo.com"),
+        (
+            "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "generativelanguage.googleapis.com",
+        ),
+        ("isto não é endereço", None),
+    ],
+)
+def test_host_do_endereco_tira_usuario_porta_caminho_e_parametros(url, host):
+    assert host_do_endereco(url) == host
+
+
+def test_os_testes_nunca_leem_o_env_do_desenvolvedor():
+    """O conftest troca `load_dotenv` por uma função que não lê nada (o `.env` real de quem roda
+    os testes pode ter a chave)."""
+    assert config.load_dotenv is not dotenv.load_dotenv
+    assert config.load_dotenv(RAIZ / ".env", encoding="utf-8") is False

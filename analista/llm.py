@@ -151,6 +151,9 @@ class ClienteOpenAI:
                 extra=_campos_do_provedor(chamada),
             )
             for chamada in mensagem.tool_calls or []
+            # Chamada sem `function` (outro tipo de ferramenta, resposta torta) não é nossa:
+            # ignorada, como se não viesse.
+            if getattr(chamada, "function", None) is not None
         )
         return MensagemModelo(
             conteudo=mensagem.content,

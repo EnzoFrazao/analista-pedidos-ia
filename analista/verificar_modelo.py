@@ -9,7 +9,7 @@ import sys
 from collections.abc import Callable
 
 from analista.agente import mensagem_da_ferramenta, mensagem_do_assistente
-from analista.config import Configuracao, carregar_configuracao
+from analista.config import Configuracao, carregar_configuracao, host_do_endereco
 from analista.llm import ErroDoProvedor, ModeloLLM, criar_modelo
 
 _FERRAMENTA_DE_TESTE = {
@@ -49,7 +49,8 @@ def verificar(
         return 2
 
     saida(f"Modelo: {config.llm_model}")
-    saida(f"Endereço: {config.llm_base_url}")
+    # Só o host: o endereço pode trazer usuário, caminho ou parâmetro com segredo.
+    saida(f"Servidor: {host_do_endereco(config.llm_base_url) or 'endereço inválido'}")
     mensagens = [{"role": "user", "content": "Chame a ferramenta responder_ok com o texto 'ok'."}]
     try:
         resposta = modelo.completar(mensagens, [_FERRAMENTA_DE_TESTE])

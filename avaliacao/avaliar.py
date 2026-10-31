@@ -30,10 +30,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 from analista.agente import PROMPT_SISTEMA, Agente, Resposta
-from analista.config import RAIZ, Configuracao, carregar_configuracao
+from analista.config import RAIZ, Configuracao, carregar_configuracao, host_do_endereco
 from analista.dados import gerar_banco, hash_banco
 from analista.llm import TEMPERATURA, ModeloLLM, criar_modelo
 from analista.rastro import Rastro
@@ -177,11 +176,6 @@ def avaliar_pergunta(
 
 def _sha256(texto: str) -> str:
     return hashlib.sha256(texto.encode("utf-8")).hexdigest()
-
-
-def _host(url: str) -> str | None:
-    """Só o nome do servidor: sem usuário, caminho nem parâmetros (que podem ter a chave)."""
-    return urlparse(url).hostname
 
 
 _CAMPOS_DO_REGISTRO = ("id", "repeticao", "acerto", "meta")
@@ -465,7 +459,7 @@ def executar_avaliacao(
                 "commit": commit,
                 "sujo": sujo,
                 "modelo": config.llm_model,
-                "endpoint_host": _host(config.llm_base_url),
+                "endpoint_host": host_do_endereco(config.llm_base_url),
                 "temperatura": TEMPERATURA,
                 "max_passos": config.max_passos,
                 "hash_prompt": _sha256(PROMPT_SISTEMA),

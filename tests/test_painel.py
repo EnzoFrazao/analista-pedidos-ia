@@ -360,6 +360,35 @@ def test_pergunta_vazia_ou_longa_nao_chama_o_modelo(monkeypatch, texto):
     assert any("0 de 10 perguntas" in c for c in textos(at.caption))
 
 
+def test_aba_pergunte_avisa_independencia_registro_e_limites():
+    at = abrir()
+
+    legendas = textos(at.tabs[1].caption)
+    juntas = " ".join(legendas)
+    assert "Cada pergunta é independente: inclua período e métrica." in legendas
+    assert "registradas" in juntas and "runs/" in juntas  # perguntas ficam no servidor
+    assert "recarregar a página" in juntas and "teto diário" in juntas
+    assert "cerca de 14 s por chamada ao modelo (até 6 por pergunta)" in juntas
+
+
+def test_com_varias_consultas_a_ultima_e_marcada_so_como_bem_sucedida(monkeypatch):
+    modelo = ModeloFalso(
+        [
+            consulta("SELECT COUNT(*) FROM pedidos", "c1"),
+            consulta("SELECT COUNT(*) FROM itens_cardapio", "c2"),
+            resposta("Duas consultas."),
+        ]
+    )
+    usar_modelo(monkeypatch, modelo)
+    at = abrir()
+
+    perguntar(at, "Conte tudo.")
+
+    legendas = textos(at.caption)
+    assert "Consulta 2 de 2 (a última bem-sucedida)" in legendas
+    assert not any("sustenta" in c for c in legendas)
+
+
 def test_duas_perguntas_seguidas_funcionam(monkeypatch):
     conexoes: list[sqlite3.Connection] = []
     original = sql_seguro.abrir_somente_leitura

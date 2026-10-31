@@ -74,8 +74,14 @@ TEXTO_SEM_CHAVE = (
     "O painel e a página de avaliação funcionam sem ela."
 )
 TEXTO_NOTA_DO_PROVEDOR = (
-    "Se o serviço do modelo estiver no limite de uso, a resposta pode levar alguns segundos a "
-    "mais: o painel tenta de novo por até cerca de 14 s antes de desistir."
+    "Se o serviço do modelo estiver no limite de uso, a resposta pode demorar mais: o painel "
+    "tenta de novo por até cerca de 14 s por chamada ao modelo (até 6 por pergunta) antes de "
+    "desistir."
+)
+TEXTO_PERGUNTA_INDEPENDENTE = "Cada pergunta é independente: inclua período e métrica."
+TEXTO_REGISTRO_E_LIMITES = (
+    "As perguntas ficam registradas nos logs do servidor (runs/), para auditoria. O limite por "
+    "sessão volta a zero ao recarregar a página; quem segura o uso é o teto diário."
 )
 TEXTO_FALHA_INESPERADA = "Não consegui responder agora. Tente de novo em instantes."
 TEXTO_FALHA_DADOS = "Não consegui ler os dados agora. Recarregue a página em instantes."
@@ -243,7 +249,7 @@ def _mostrar_resposta(item: dict, limite_linhas: int) -> None:
                 ultima = n == len(consultas)
                 st.caption(
                     f"Consulta {n} de {len(consultas)}"
-                    + (" (a última bem-sucedida, a que sustenta a resposta)" if ultima else "")
+                    + (" (a última bem-sucedida)" if ultima else "")
                 )
             st.code(consulta["sql"], language="sql")
             if consulta["truncado"]:
@@ -304,7 +310,9 @@ def _aba_pergunte(config: Configuracao) -> None:
         contador.caption(f"{_feitas()} de {config.limite_sessao} perguntas nesta sessão")
 
     mostrar_contador()
+    st.caption(TEXTO_PERGUNTA_INDEPENDENTE)
     st.caption(TEXTO_NOTA_DO_PROVEDOR)
+    st.caption(TEXTO_REGISTRO_E_LIMITES)
     st.caption(
         'Exemplos: "Qual canal tem a maior taxa de cancelamento?" ou '
         '"Quais bairros ficaram mais lentos nas últimas semanas?"'

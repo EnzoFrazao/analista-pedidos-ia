@@ -278,3 +278,24 @@ def test_chamada_sem_campos_extras_tem_extra_none():
     sdk = SdkFalso([_resposta(None, [_chamada("c", "executar_sql", "{}")])])
 
     assert _cliente(sdk).completar([], []).chamadas[0].extra is None
+
+
+def test_chamada_sem_function_e_ignorada():
+    """Provedor compatível que manda uma chamada sem `function` (outro tipo de ferramenta ou
+    resposta torta): a chamada é ignorada, sem exceção, e as válidas seguem."""
+    sem_function = SimpleNamespace(id="x1", function=None)
+    sem_atributo = SimpleNamespace(id="x2", type="custom")
+    valida = _chamada("c1", "executar_sql", '{"consulta": "SELECT 1"}')
+    sdk = SdkFalso([_resposta(None, [sem_function, sem_atributo, valida])])
+
+    mensagem = _cliente(sdk).completar([], [])
+
+    assert [c.id for c in mensagem.chamadas] == ["c1"]
+
+
+def test_so_chamadas_sem_function_vira_resposta_sem_chamadas():
+    sdk = SdkFalso([_resposta("texto", [SimpleNamespace(id="x1", function=None)])])
+
+    mensagem = _cliente(sdk).completar([], [])
+
+    assert mensagem.chamadas == () and mensagem.conteudo == "texto"

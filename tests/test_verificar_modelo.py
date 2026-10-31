@@ -123,3 +123,19 @@ def test_erro_do_provedor_aponta_so_o_que_falhou(tipo: str, esperado: str, ausen
     assert "mensagem amigável" in texto
     assert "tool calling: não verificado" in texto
     assert CHAVE not in texto
+
+
+def test_mostra_so_o_host_do_endereco():
+    """O endereço pode ter usuário, caminho ou parâmetro com segredo; a saída mostra só o host."""
+    config = Configuracao(
+        llm_api_key=CHAVE,
+        llm_base_url="https://usuario:senha@api.exemplo.com/v1/caminho-secreto?key=segredo",
+    )
+    modelo = ModeloFalso([_pede_ok(), _responde("Recebi o resultado.")])
+
+    codigo, texto = _rodar(config, modelo)
+
+    assert codigo == 0
+    assert "api.exemplo.com" in texto
+    for segredo in ("senha", "caminho-secreto", "segredo", "usuario"):
+        assert segredo not in texto

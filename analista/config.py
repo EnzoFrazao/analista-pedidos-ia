@@ -4,6 +4,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -42,12 +43,15 @@ def carregar_configuracao(env: Mapping[str, str] | None = None) -> Configuracao:
 
     padrao = Configuracao()
     chave = (env.get("LLM_API_KEY") or "").strip()
+    # Valor colado em painel de segredos costuma trazer espaço ou quebra de linha no fim.
+    endereco = (env.get("LLM_BASE_URL") or "").strip()
+    modelo = (env.get("LLM_MODEL") or "").strip()
     banco = env.get("BANCO_PATH")
     runs = env.get("RUNS_PATH")
     avaliacao = env.get("AVALIACAO_PATH")
     return Configuracao(
-        llm_base_url=env.get("LLM_BASE_URL") or padrao.llm_base_url,
-        llm_model=env.get("LLM_MODEL") or padrao.llm_model,
+        llm_base_url=endereco or padrao.llm_base_url,
+        llm_model=modelo or padrao.llm_model,
         llm_api_key=chave or None,
         banco=Path(banco) if banco else padrao.banco,
         pasta_runs=Path(runs) if runs else padrao.pasta_runs,
@@ -55,3 +59,8 @@ def carregar_configuracao(env: Mapping[str, str] | None = None) -> Configuracao:
         limite_sessao=int(env.get("LIMITE_SESSAO") or padrao.limite_sessao),
         limite_dia=int(env.get("LIMITE_DIA") or padrao.limite_dia),
     )
+
+
+def host_do_endereco(url: str) -> str | None:
+    """Só o nome do servidor: sem usuário, porta, caminho nem parâmetros (que podem ter a chave)."""
+    return urlparse(url).hostname
