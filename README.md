@@ -19,7 +19,7 @@
 
 <a href="docs/video/analista-pedidos-ia.mp4"><img src="docs/video/previa.gif" alt="Prévia do vídeo: um rastro real de tool calling, do pedido do esquema à resposta com a consulta usada" width="760"></a>
 
-<sub>Prévia de 10 s, sem som (um rastro real de tool calling). Clique para abrir o vídeo completo, de 2 min 10 s, narrado e legendado em português.</sub>
+<sub>Prévia de 10 s, sem som (um rastro real de tool calling). Clique para chegar ao arquivo do vídeo completo, de 2 min 10 s, narrado e legendado em português.</sub>
 
 </div>
 
@@ -78,7 +78,7 @@
 
 <a href="docs/video/analista-pedidos-ia.mp4"><img src="docs/video/previa.gif" alt="Prévia do vídeo do projeto" width="640"></a>
 
-[**▶ Abrir o vídeo (MP4, 2 min 10 s, 6 MB, com som)**](docs/video/analista-pedidos-ia.mp4) · [Narração e legendas](docs/video/legendas.md)
+[**▶ Baixar o vídeo (MP4, 2 min 10 s, 6 MB, com som)**](docs/video/analista-pedidos-ia.mp4) · [Narração e legendas](docs/video/legendas.md)
 
 </div>
 
@@ -99,7 +99,7 @@ O vídeo é **narrado em português**, com uma **voz sintética** (gerada a part
 
 **Como o vídeo foi feito.** As cenas são páginas HTML renderizadas quadro a quadro e codificadas com `ffmpeg`; só a demo ao vivo é uma gravação de tela (com a espera do modelo acelerada). Os dados vêm do projeto: o rastro é um rastro real da avaliação, os números são os de `ultima.json`, o banco foi gerado com a semente 2026 e conferido pelo hash. O roteiro da narração foi escrito para o vídeo (o texto está em [`legendas.md`](docs/video/legendas.md)) e lido pela voz `pt-BR-FranciscaNeural`, gerada com o `edge-tts` (leitura em voz alta online do Microsoft Edge); siglas e palavras em inglês têm a pronúncia escrita à parte para a voz ler direito, e a legenda mantém a grafia correta. O vídeo e este README foram produzidos com a ajuda do Claude (Claude Code) a partir dos arquivos do repositório; os scripts que geraram o vídeo não fazem parte do repositório.
 
-> **Sobre o player.** O GitHub não toca um MP4 de caminho relativo dentro do README, por isso a prévia é um GIF que abre o arquivo; na página do arquivo o vídeo roda.
+> **Sobre o player.** O GitHub não toca um MP4 que está no repositório: a marcação `<video>` é removida do README e a página do arquivo só oferece o download (6 MB). Por isso a prévia é um GIF que leva ao arquivo; o texto da narração está em [`legendas.md`](docs/video/legendas.md).
 
 ## Veja funcionando
 
