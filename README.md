@@ -13,11 +13,11 @@
 ![Dados sintéticos](https://img.shields.io/badge/dados-sint%C3%A9ticos-D97706)
 [![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-1E40AF)](LICENSE)
 
-[**Painel no ar**](https://pedidoai.streamlit.app/) · [**Vídeo narrado, 1 min 36 s**](docs/video/analista-pedidos-ia.mp4) · [Avaliação](#avaliação) · [Segurança do SQL](#segurança-em-camadas) · [Como foi construído](#como-foi-construído-com-ia) · [Como rodar](#como-rodar)
+[**Painel no ar**](https://pedidoai.streamlit.app/) · [**Vídeo narrado, 1 min 36 s**](#vídeo) · [Avaliação](#avaliação) · [Segurança do SQL](#segurança-em-camadas) · [Como foi construído](#como-foi-construído-com-ia) · [Como rodar](#como-rodar)
 
 <br>
 
-<a href="docs/video/analista-pedidos-ia.mp4"><img src="docs/video/previa.gif" alt="Prévia do vídeo: uma pergunta feita ao painel publicado e a resposta com a consulta usada" width="760"></a>
+<a href="#vídeo"><img src="docs/video/previa.gif" alt="Prévia do vídeo: uma pergunta feita ao painel publicado e a resposta com a consulta usada" width="760"></a>
 
 <sub>Prévia de 10 s, sem som (uma pergunta real no painel publicado). Clique para chegar ao arquivo do vídeo completo, de 1 min 36 s, narrado e legendado em português.</sub>
 
@@ -74,11 +74,11 @@
 
 ## Vídeo
 
+https://github.com/user-attachments/assets/8a39dea4-ea68-450f-9b45-a306c827e134
+
 <div align="center">
 
-<a href="docs/video/analista-pedidos-ia.mp4"><img src="docs/video/previa.gif" alt="Prévia do vídeo do projeto" width="640"></a>
-
-[**▶ Baixar o vídeo (MP4, 1 min 36 s, 3 MB, com som)**](docs/video/analista-pedidos-ia.mp4) · [Narração e legendas](docs/video/legendas.md)
+[**Baixar o vídeo (MP4, 1 min 36 s, 3 MB, com som)**](docs/video/analista-pedidos-ia.mp4) · [Narração e legendas](docs/video/legendas.md)
 
 </div>
 
@@ -96,7 +96,7 @@ O vídeo é **narrado em português**, com uma **voz sintética** (gerada a part
 
 **Como o vídeo foi feito.** As cenas são páginas HTML renderizadas quadro a quadro e codificadas com `ffmpeg`; as telas do painel são capturas do painel publicado, feitas em 31/10/2026, e as respostas mostradas (473 cancelados e a recusa do pedido de apagar) são as que o painel deu; o selo com o nome do modelo foi ocultado nas capturas. Os números vêm do projeto: os de `ultima.json` e o banco gerado com a semente 2026. O roteiro da narração foi escrito para o vídeo (o texto está em [`legendas.md`](docs/video/legendas.md)) e lido pela voz `pt-BR-FranciscaNeural`, gerada com o `edge-tts` (leitura em voz alta online do Microsoft Edge); siglas e palavras em inglês têm a pronúncia escrita à parte para a voz ler direito, e a legenda mantém a grafia correta. O vídeo e este README foram produzidos com a ajuda do Claude (Claude Code) a partir dos arquivos do repositório; os scripts que geraram o vídeo não fazem parte do repositório.
 
-> **Sobre o player.** O GitHub não toca um MP4 que está no repositório: a marcação `<video>` é removida do README e a página do arquivo só oferece o download (3 MB). Por isso a prévia é um GIF que leva ao arquivo; o texto da narração está em [`legendas.md`](docs/video/legendas.md).
+> **Sobre o player.** O GitHub não toca um MP4 que está só na pasta do repositório (a marcação `<video>` é removida do README e a página do arquivo só oferece o download). O player acima usa o mesmo arquivo, `docs/video/analista-pedidos-ia.mp4`, enviado pelo editor do GitHub; a prévia em GIF, no topo, leva até ele. O texto da narração está em [`legendas.md`](docs/video/legendas.md).
 
 ## Veja funcionando
 
