@@ -1,5 +1,21 @@
 # Marcos do projeto
 
+## 2026-10-31 — vídeo refeito
+
+- O vídeo foi refeito (1 min 36 s, `docs/video/`) a pedido do mantenedor, que achou o anterior feio e
+  carregado: o painel publicado passou a ser o protagonista, numa janela de navegador com anotações
+  numeradas, em 7 cenas (o que é, para que serve, como funciona, segurança, resultado da avaliação, como
+  foi construído, fecho), com o resultado já nos primeiros segundos. Saíram a demo com a espera acelerada,
+  o rastro do Calhau, a cena do banco e os nomes de modelos (nenhum aparece na tela, na legenda ou na voz;
+  nas capturas do painel o selo do modelo foi ocultado). Mesma voz e mesmo método de produção; README,
+  prévia, pôster e transcrição foram atualizados. A versão de 2 min 10 s continua no histórico do Git.
+  Nenhuma mudança de código ou de contrato.
+- Ajuste da narração a pedido do mantenedor, ainda no mesmo dia: o fecho deixou de dizer o nome da
+  hospedagem do código (a voz sintética o lia errado) e passou a remeter aos links do post em que o vídeo
+  é publicado; "modelo falso" virou "modelo de teste" e "dados sintéticos, só demonstração" virou "dados
+  criados para o desenvolvimento", na voz, na tela e na transcrição; a contagem de testes dita no vídeo foi
+  corrigida de 478 para 480 (`pytest -q`: 480 passed).
+
 ## 2026-10-31 — autoria das perguntas e aviso do plano gratuito
 
 - As 25 perguntas e as consultas de referência foram geradas por IA (Claude) na construção, e não
