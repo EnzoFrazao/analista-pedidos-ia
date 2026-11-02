@@ -16,6 +16,12 @@
   criados para o desenvolvimento", na voz, na tela e na transcrição; a contagem de testes dita no vídeo foi
   corrigida de 478 para 480 (`pytest -q`: 480 passed).
 
+## 2026-11-02 — perguntas revisadas pelo mantenedor
+
+- O mantenedor revisou as 25 perguntas da avaliação. README, `avaliacao/perguntas.yaml` e `specs/testing.md` passam a
+  dizer que as perguntas foram geradas por IA (Claude) e revisadas por ele; as consultas de referência continuam
+  geradas por IA. Nenhuma pergunta, referência ou número de acerto mudou.
+
 ## 2026-10-31 — autoria das perguntas e aviso do plano gratuito
 
 - As 25 perguntas e as consultas de referência foram geradas por IA (Claude) na construção, e não

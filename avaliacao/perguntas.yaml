@@ -1,4 +1,4 @@
-# Perguntas de avaliação do agente (25), geradas por IA (Claude) na construção, com a consulta de referência fixa.
+# Perguntas de avaliação do agente (25), geradas por IA (Claude) na construção e revisadas pelo mantenedor, com a consulta de referência fixa (gerada por IA).
 #
 # O acerto é de resultado, não de texto: o resultado da ÚLTIMA consulta bem-sucedida do agente
 # tem de ser igual ao de uma referência (avaliacao/comparador.py). O agente só vê o texto da

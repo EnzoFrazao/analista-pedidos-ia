@@ -29,7 +29,7 @@
 
 | | |
 |---|---|
-| **88,0%** de acerto geral | Nas 25 perguntas da avaliação, 3 repetições cada, com `gemini-3.5-flash-lite` (plano gratuito). As 22 objetivas acertaram **100,0%** e as 3 ambíguas **0,0%** (um piso, pela regra estrita da medição). Linha de base: **12,0%** para quem nunca consulta o banco. **As perguntas e as consultas de referência foram geradas por IA (Claude) na construção, não escritas pelo autor: o número não prova que o agente acerta perguntas novas.** |
+| **88,0%** de acerto geral | Nas 25 perguntas da avaliação, 3 repetições cada, com `gemini-3.5-flash-lite` (plano gratuito). As 22 objetivas acertaram **100,0%** e as 3 ambíguas **0,0%** (um piso, pela regra estrita da medição). Linha de base: **12,0%** para quem nunca consulta o banco. **As perguntas foram geradas por IA (Claude) na construção e revisadas por mim; as consultas de referência também foram geradas por IA. O número não prova que o agente acerta perguntas novas.** |
 | **5 camadas** de defesa do SQL | A segurança vem da conexão somente leitura e do *authorizer* do SQLite, não do prompt. Cada camada tem teste (consultas de ataque, funções lentas, escrita escondida). |
 | **2 ferramentas**, até **6 passos** | `descrever_esquema` e `executar_sql`, num laço de tool calling em Python puro, sem framework de agentes. |
 | **8.000 pedidos** sintéticos | Um restaurante fictício, 91 dias (2026-06-29 a 2026-09-27), gerado com a semente 2026: mesma semente, mesmo banco. |
@@ -59,7 +59,7 @@
 **O que o projeto mostra, além de "traduzir pergunta em SQL":**
 
 - **SQL somente leitura em camadas.** O banco recusa escrita mesmo que o modelo tente ou seja induzido por um texto escondido nos dados.
-- **Acerto medido**, contra consultas de referência fixas, geradas por IA na construção, com linha de base e com o que o número **não** prova escrito junto dele.
+- **Acerto medido**, contra consultas de referência fixas, geradas por IA na construção (as perguntas, revisadas por mim), com linha de base e com o que o número **não** prova escrito junto dele.
 - **Rastro** (JSONL) de cada execução: pergunta, cada passo, cada chamada de ferramenta, cada consulta e o resultado.
 - **Relatório semanal** em que o texto não pode citar um número que o SQL não calculou.
 
@@ -304,7 +304,7 @@ Uma execução completa em 2026-10-31 (75 execuções: 25 perguntas, 3 repetiç�
 
 **Linha de base:** um modelo que nunca consulta e só responde sem escrever acertaria **12,0%**; um que responde a toda ambígua com uma pergunta, **24,0%**.
 
-> **Como ler.** As 22 objetivas acertaram nas 3 repetições, mas são **22 perguntas geradas por IA (Claude) na construção, com referências geradas do mesmo modo**: o número diz que o agente acerta *estas* perguntas, não que acerta perguntas novas. As 3 ambíguas (`m01` a `m03`) erraram nas 3 repetições pela regra estrita da medição: nos 9 rastros, o agente escolheu uma interpretação e consultou, quase nunca perguntou de volta, e o resultado trazia colunas além das da referência ou outra visão (por exemplo, a série das 13 semanas em vez da comparação de duas). **A regra não foi afrouxada depois de ver a nota.** A qualidade das respostas em texto não foi medida.
+> **Como ler.** As 22 objetivas acertaram nas 3 repetições, mas são **22 perguntas geradas por IA (Claude) na construção e revisadas por mim, com consultas de referência geradas por IA**: o número diz que o agente acerta *estas* perguntas, não que acerta perguntas novas. As 3 ambíguas (`m01` a `m03`) erraram nas 3 repetições pela regra estrita da medição: nos 9 rastros, o agente escolheu uma interpretação e consultou, quase nunca perguntou de volta, e o resultado trazia colunas além das da referência ou outra visão (por exemplo, a série das 13 semanas em vez da comparação de duas). **A regra não foi afrouxada depois de ver a nota.** A qualidade das respostas em texto não foi medida.
 
 ## Relatório semanal
 

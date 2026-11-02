@@ -54,7 +54,7 @@ resultados e passa nas recusas). O painel é testado com o `AppTest` do Streamli
 ## Lacunas
 
 - Só números de `avaliacao/resultados/ultima.json` podem aparecer no README, no painel ou em texto fora
-  do repositório. A medição é de uma execução, com 25 perguntas e referências geradas por IA (Claude) na construção, não pelo autor.
+  do repositório. A medição é de uma execução, com 25 perguntas geradas por IA (Claude) na construção e revisadas pelo mantenedor (as consultas de referência também são geradas por IA).
 - A volta do Gemini 3 com `thought_signature` é testada com cliente falso nos testes automatizados; a
   prova com o provedor real é `python -m analista.verificar_modelo` (passou em 2026-10-31) e não roda no CI.
 - O texto de `DEFINICOES` e o SQL das consultas do relatório são duas escritas da mesma regra, protegidas
